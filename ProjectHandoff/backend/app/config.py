@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from functools import cached_property
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ProjectHandoff/ root — anchors cwd-relative defaults so the app behaves the same
+# no matter which directory uvicorn is launched from.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -25,13 +30,13 @@ class Settings(BaseSettings):
     # Storage: auto | drive | local
     storage_mode: str = "auto"
     allow_local_storage: bool = False
-    local_data_dir: str = "backend/data"
+    local_data_dir: str = str(PROJECT_ROOT / "data")
 
     # Google OAuth (organizer account authorizes the backend)
     google_client_id: str = ""
     google_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:8000/api/drive/oauth/callback"
-    google_token_file: str = ".tokens/token.json"
+    google_token_file: str = str(PROJECT_ROOT / ".tokens" / "token.json")
 
     # Google Drive layout
     drive_root_folder_id: str = ""

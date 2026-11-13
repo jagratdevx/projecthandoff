@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Secrets & credentials — NEVER commit
+.env
+.env.*
+!.env.example
+.tokens/
+*.token.json
+client_secret*.json
+credentials*.json
+!google-client-secret.example.json
+
+# Local development storage (explicitly non-production mode)
+backend/data/
+data/
+
+# OS noise
+.DS_Store
+Thumbs.db
+*.log

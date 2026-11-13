@@ -1,0 +1,230 @@
+from __future__ import annotations
+
+import asyncio
+import json
+
+import pytest
+
+from app.config import Settings
+from app.services.csvstore import CsvStore
+from app.services.drive.base import (
+    DriveAuthError,
+    DriveError,
+    DriveTransientError,
+    NotFoundError,
+    StaleRevision,
+)
+from app.services.drive.factory import create_drive_backend
+from app.services.drive.google_drive import GoogleDriveBackend
+from app.services.drive.local import LocalDriveBackend
+
+from fake_drive import FakeCreds, FakeDriveService, make_fake_http_error
+
+
+@pytest.fixture()
+def drive_env(tmp_path, monkeypatch):
+    """A GoogleDriveBackend wired to a FakeDriveService with valid creds."""
+    token_file = tmp_path / "token.json"
+    token_file.write_text(json.dumps({"token": "t", "refresh_token": "r"}))
+    service = FakeDriveService()
+    monkeypatch.setattr("googleapiclient.discovery.build", lambda *a, **kw: service)
+    backend = GoogleDriveBackend(Settings(google_token_file=str(token_file)))
+    backend._creds = FakeCreds()
+    backend._token_mtime = token_file.stat().st_mtime
+    return backend, service, token_file
+
+
+def run(coro):
+    return asyncio.run(coro)
+
+
+def test_folder_hierarchy_created_and_cached(drive_env):
+    backend, service, _ = drive_env
+    run(backend.ensure_root())
+    folder = run(backend.ensure_folder("TeamData/team1"))
+    assert folder
+    assert "TeamData" in backend._folder_cache and "TeamData/team1" in backend._folder_cache
+    # second call served from cache
+    run(backend.ensure_folder("TeamData/team1"))
+    assert service.state["list_calls"] <= 4
+
+
+def test_read_write_round_trip_with_revisions(drive_env):
+    backend, service, _ = drive_env
+    run(backend.ensure_root())
+    revision = run(backend.write_file("TeamData/users.csv", "a,b\n", expected_revision=None))
+    assert revision
+    content, revision2 = run(backend.read_file("TeamData/users.csv"))
+    assert content == "a,b\n"
+    assert revision2 == revision
+
+    new_revision = run(backend.write_file("TeamData/users.csv", "a,b,c\n", expected_revision=revision))
+    assert new_revision != revision
+    with pytest.raises(StaleRevision):
+        run(backend.write_file("TeamData/users.csv", "x\n", expected_revision=revision))
+
+
+def test_missing_file_raises_not_found(drive_env):
+    backend, _, _ = drive_env
+    with pytest.raises(NotFoundError):
+        run(backend.read_file("TeamData/users.csv"))
+
+
+def test_csv_store_on_google_backend(tmp_path, drive_env):
+    backend, _, _ = drive_env
+    store = CsvStore(backend)
+    run(store.init())
+    run(store.ensure_team("team1"))
+
+    async def scenario():
+        await store.insert(
+            "users",
+            {"user_id": "u1", "name": "Drive User", "email": "d@x.dev", "role": "owner",
+             "team_id": "", "joined_at": "", "status": "active"},
+        )
+
+    run(scenario())
+    rows, _ = run(store.read("users"))
+    assert rows[0]["name"] == "Drive User"
+
+
+def test_http_500_maps_to_transient(drive_env, monkeypatch):
+    from googleapiclient.errors import HttpError
+
+    backend, service, _ = drive_env
+
+    def boom(svc):
+        raise make_fake_http_error(500)
+
+    with pytest.raises(DriveTransientError):
+        run(backend._call(boom))
+
+
+def test_http_404_maps_to_not_found(drive_env):
+    backend, _, _ = drive_env
+
+    def boom(svc):
+        raise make_fake_http_error(404)
+
+    with pytest.raises(NotFoundError):
+        run(backend._call(boom))
+
+
+def test_http_403_refreshes_then_maps_to_auth(drive_env):
+    backend, service, _ = drive_env
+    creds = FakeCreds()
+    backend._creds = creds
+    calls = {"n": 0}
+
+    def boom(svc):
+        calls["n"] += 1
+        raise make_fake_http_error(403)
+
+    with pytest.raises(DriveAuthError):
+        run(backend._call(boom))
+    assert calls["n"] == 2  # retried once after refresh
+    assert creds.refresh_count == 1
+
+
+def test_expired_token_is_refreshed_and_persisted(drive_env):
+    backend, _, token_file = drive_env
+    creds = FakeCreds(expired=True)
+    backend._creds = creds
+
+    run(backend.ensure_root())
+
+    assert creds.refresh_count == 1
+    saved = json.loads(token_file.read_text())
+    assert saved["token"].startswith("tok-refreshed")
+
+
+def test_refresh_failure_maps_to_auth_error(drive_env, monkeypatch):
+    backend, _, _ = drive_env
+    creds = FakeCreds(expired=True, refresh_fails=True)
+    backend._creds = creds
+
+    with pytest.raises(DriveAuthError):
+        run(backend.ensure_root())
+
+
+def test_upload_and_download_files(drive_env):
+    backend, _, _ = drive_env
+    file_id = run(backend.upload_file("Projects/t1/p1/files", "diagram.png", b"\x89PNG fake", "image/png"))
+    assert file_id
+    data = run(backend.download_file(file_id))
+    assert data == b"\x89PNG fake"
+    run(backend.delete_file(file_id))
+    with pytest.raises(NotFoundError):
+        run(backend.download_file(file_id))
+
+
+def test_backup_round_trip_on_google_backend(drive_env):
+    backend, _, _ = drive_env
+    store = CsvStore(backend)
+    run(store.init())
+
+    async def scenario():
+        await store.insert(
+            "users",
+            {"user_id": "u1", "name": "A", "email": "a@x.dev", "role": "owner", "team_id": "",
+             "joined_at": "", "status": "active"},
+        )
+        await store.update("users", "u1", {"name": "B"})
+
+    run(scenario())
+    entries = run(backend.list_folder("Backups/global/users"))
+    assert len(entries) >= 1
+    restored = run(backend.download_file(entries[0]["id"]))
+    assert b"A" in restored  # snapshot of the pre-update content
+
+
+def test_google_status_reports_account(drive_env):
+    backend, _, _ = drive_env
+    status = run(backend.status())
+    assert status == {"mode": "drive", "authorized": True, "account": "organizer@school.edu"}
+
+
+# ---------------------------------------------------------------------------
+# Factory behaviour — never silent fallback
+# ---------------------------------------------------------------------------
+
+def test_factory_rejects_auto_without_token(tmp_path, monkeypatch,):
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(
+        storage_mode="auto",
+        allow_local_storage=False,
+        google_token_file=str(tmp_path / "missing.json"),
+        local_data_dir=str(tmp_path / "data"),
+    )
+    with pytest.raises(RuntimeError) as exc:
+        create_drive_backend(settings)
+    assert "PH_GOOGLE_CLIENT_ID" in str(exc.value)
+
+
+def test_factory_requires_explicit_optin_for_local(tmp_path):
+    settings = Settings(storage_mode="local", allow_local_storage=False, local_data_dir=str(tmp_path / "data"))
+    with pytest.raises(RuntimeError):
+        create_drive_backend(settings)
+
+
+def test_factory_selects_local_when_opted_in(tmp_path):
+    settings = Settings(
+        storage_mode="local", allow_local_storage=True,
+        local_data_dir=str(tmp_path / "data"),
+    )
+    backend = create_drive_backend(settings)
+    assert isinstance(backend, LocalDriveBackend)
+    assert backend.mode == "local"
+
+
+def test_factory_selects_drive_with_token_file(tmp_path):
+    token_file = tmp_path / "token.json"
+    token_file.write_text("{}")
+    settings = Settings(
+        storage_mode="auto",
+        google_token_file=str(token_file),
+        local_data_dir=str(tmp_path / "data"),
+    )
+    backend = create_drive_backend(settings)
+    assert isinstance(backend, GoogleDriveBackend)
+    assert backend.mode == "drive"

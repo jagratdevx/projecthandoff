@@ -81,3 +81,24 @@ class DriveBackend(ABC):
     @abstractmethod
     async def status(self) -> dict:
         """Backend status for /api/sync + settings UI."""
+
+    # -- team-scoped Drive folders (no-ops / unsupported by default) ----------
+    # Only the Google Drive implementation acts on these; the local backend
+    # keeps its single data directory regardless of team folder links.
+
+    async def set_team_root(self, team_id: str, folder_id: str) -> None:
+        """Pin a team's Drive folder so its paths resolve inside it."""
+
+    async def folder_info(self, folder_id: str) -> dict:
+        """Return {'id', 'name', 'url'} for a Drive folder, verifying access.
+
+        Raises DriveError (NotFoundError) when the folder does not exist or is
+        not accessible with the connected account.
+        """
+        raise DriveError("Folder lookup is not supported by this storage backend")
+
+    async def share_folder(self, folder_id: str, email: str, role: str = "writer") -> None:
+        """Grant a Google account permission on a folder (best effort)."""
+
+    async def unshare_folder(self, folder_id: str, email: str) -> None:
+        """Revoke a Google account's permission on a folder (best effort)."""

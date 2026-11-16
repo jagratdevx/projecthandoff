@@ -18,6 +18,7 @@ import { Settings } from "./pages/Settings";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { JoinTeam } from "./pages/JoinTeam";
+import { Setup } from "./pages/Setup";
 
 /** Scroll to top on route change. */
 function ScrollToTop() {
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/login" element={<AuthGate><Login /></AuthGate>} />
         <Route path="/register" element={<AuthGate><Register /></AuthGate>} />
         <Route path="/join" element={<AuthGate><JoinTeam /></AuthGate>} />
+        <Route path="/setup" element={<Setup />} />
 
         <Route element={<ProtectedLayout />}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />

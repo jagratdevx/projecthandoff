@@ -195,7 +195,7 @@ def test_corrupt_csv_is_recovered_from_backup(tmp_path):
         (tmp_path / "data" / "TeamData" / "users.csv").write_text("garbage,header\n1,2\n")
 
     asyncio.run(scenario())
-    rows, _ = asyncio.run(store.read("users"))
+    rows, _ = asyncio.run(store.read("users", fresh=True))  # bypass cache: the file was corrupted externally
     assert [r["user_id"] for r in rows] == ["u1"]
     assert rows[0]["name"] == "A v2"
 

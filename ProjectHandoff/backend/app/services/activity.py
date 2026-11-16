@@ -32,6 +32,7 @@ ACTION_MEMBER_LEFT = "team.member_removed"
 ACTION_ROLE_CHANGED = "team.role_changed"
 ACTION_INVITE_CREATED = "team.invite_created"
 ACTION_INVITE_REVOKED = "team.invite_revoked"
+ACTION_DRIVE_FOLDER_CONNECTED = "team.drive_folder_connected"
 
 
 async def log_activity(

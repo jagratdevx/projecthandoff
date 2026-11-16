@@ -22,6 +22,8 @@ export interface Team {
   owner_id: string;
   created_at: string;
   status: string;
+  drive_folder_id?: string;
+  drive_folder_url?: string;
 }
 
 export interface Project {

@@ -83,5 +83,12 @@ def create_signed_state(nonce: str, secret_key: str) -> str:
 
 
 def verify_signed_state(state: str, secret_key: str) -> bool:
+    return read_signed_state(state, secret_key) is not None
+
+
+def read_signed_state(state: str, secret_key: str) -> str | None:
+    """Return the signed nonce if authentic and unexpired, else None."""
     claims = verify_token(state, secret_key)
-    return bool(claims and claims.get("n"))
+    if claims and claims.get("n"):
+        return str(claims["n"])
+    return None

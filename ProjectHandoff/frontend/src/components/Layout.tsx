@@ -72,9 +72,7 @@ export function Layout() {
   const sidebar = (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
-          PH
-        </div>
+        <img src="/logo.png" alt="ProjectHandoff logo" className="h-8 w-8 rounded-lg" />
         <div>
           <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">ProjectHandoff</p>
           <p className="text-[11px] leading-tight text-zinc-500">{team?.name ?? "No team yet"}</p>

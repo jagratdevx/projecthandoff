@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Callable
 
 from app.config import Settings
+from app.services.drive_link import drive_folder_url
 
 from .base import (
     DriveAuthError,
@@ -18,7 +22,15 @@ from .base import (
 )
 
 FOLDER_MIME = "application/vnd.google-apps.folder"
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+# Full Drive scope (not drive.file): teams bring their *own* folders by pasting
+# a link, and the backend manages sharing permissions on the organizer's
+# behalf — drive.file would only ever see files this app created itself.
+SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+# How often the backend re-reads TeamData/teams.csv to pick up team folders.
+TEAM_ROOTS_TTL_SECONDS = 15.0
+# Socket timeout for one Drive HTTP call (never hang the shared I/O queue).
+DRIVE_HTTP_TIMEOUT = 30
 
 
 def _q_escape(value: str) -> str:
@@ -45,6 +57,9 @@ class GoogleDriveBackend(DriveBackend):
         self._creds: Any = None
         self._service: Any = None
         self._token_mtime: float = -1.0
+        # team_id -> Drive folder id (the folder the team pasted at setup)
+        self._team_roots: dict[str, str] = {}
+        self._team_roots_at: float = -1e9
 
     # ------------------------------------------------------------------ #
     # Credentials                                                         #
@@ -139,7 +154,17 @@ class GoogleDriveBackend(DriveBackend):
                 ) from exc
             self._persist_creds()
         if self._service is None:
-            self._service = build("drive", "v3", credentials=creds, cache_discovery=False)
+            # cache_discovery=True: keep Google's (large) API description on
+            # disk instead of re-downloading it on every service rebuild.
+            service = build("drive", "v3", credentials=creds, cache_discovery=True)
+            # googleapiclient sets no socket timeout by default — a stalled
+            # connection would hold the shared I/O lock (and every pending
+            # request) forever. Bound every call explicitly.
+            wrapped = getattr(service, "_http", None)
+            inner = getattr(wrapped, "http", None)
+            if inner is not None:
+                inner.timeout = self.settings.drive_timeout_seconds
+            self._service = service
         try:
             return fn(self._service)
         except HttpError as exc:
@@ -199,18 +224,85 @@ class GoogleDriveBackend(DriveBackend):
         self._folder_cache[""] = fid
         return fid
 
-    def _ensure_folder_sync(self, svc: Any, path: str) -> str:
+    def _load_team_roots_sync(self, svc: Any) -> None:
+        """Refresh team_id -> drive folder id from TeamData/teams.csv."""
+        self._team_roots_at = time.monotonic()
+        try:
+            meta = self._find_file_sync(svc, "TeamData/teams.csv")
+            if meta is None:
+                return
+            data = svc.files().get_media(fileId=meta["id"]).execute()
+            text = data.decode("utf-8")
+        except (DriveError, UnicodeDecodeError):
+            return
+        reader = csv.reader(io.StringIO(text, newline=""))
+        try:
+            header = [h.strip() for h in next(reader)]
+        except StopIteration:
+            return
+        if "team_id" not in header or "drive_folder_id" not in header:
+            return
+        id_at, folder_at = header.index("team_id"), header.index("drive_folder_id")
+        roots = {
+            row[id_at].strip(): row[folder_at].strip()
+            for row in reader
+            if len(row) > max(id_at, folder_at) and row[id_at].strip() and row[folder_at].strip()
+        }
+        if roots != self._team_roots:
+            self._team_roots = roots
+            self._folder_cache.clear()  # team paths may now resolve elsewhere
+
+    def _map_path_sync(self, svc: Any, path: str) -> tuple[str, str]:
+        """Resolve a virtual path to ``(anchor_folder_id, mapped_subpath)``.
+
+        Returns ("", path) unchanged when the path belongs to the global root
+        (global tables, teams without a Drive folder). Team-scoped paths are
+        remapped inside the folder the team pasted at setup:
+
+            TeamData/{tid}/tasks.csv        -> <team folder>/AppData/tasks.csv
+            TeamData/{tid}/files/…          -> <team folder>/Files/…
+            Projects/{tid}/{pid}/files/…    -> <team folder>/Projects/{pid}/files/…
+            Events/{tid}/{eid}/files/…      -> <team folder>/Events/{eid}/files/…
+            Backups/{tid}/{table}/…         -> <team folder>/Backups/{table}/…
+        """
         parts = [p for p in path.split("/") if p]
-        parent = self._root_folder_sync(svc)
+        if len(parts) >= 2 and parts[0] in ("TeamData", "Projects", "Events", "Backups"):
+            second = parts[1]
+            is_team_scope = second != "global" and (
+                parts[0] != "TeamData" or not second.endswith(".csv")
+            )
+            if is_team_scope:
+                if time.monotonic() - self._team_roots_at > TEAM_ROOTS_TTL_SECONDS:
+                    self._load_team_roots_sync(svc)
+                anchor = self._team_roots.get(second)
+                if anchor:
+                    rest = parts[2:]
+                    if parts[0] == "TeamData":
+                        # team-level uploads live in Files/, tables in AppData/
+                        mapped = ["Files"] + rest[1:] if rest and rest[0] == "files" else ["AppData"] + rest
+                    elif parts[0] == "Backups":
+                        mapped = ["Backups"] + rest
+                    else:  # Projects / Events — drop the team_id level
+                        mapped = [parts[0]] + rest
+                    return anchor, "/".join(mapped)
+        return "", path
+
+    def _ensure_folder_sync(self, svc: Any, path: str) -> str:
+        anchor, mapped_path = self._map_path_sync(svc, path)
+        mapped_parts = [p for p in mapped_path.split("/") if p]
+        parent = anchor or self._root_folder_sync(svc)
         acc: list[str] = []
-        for part in parts:
-            acc.append(part)
-            key = "/".join(acc)
+        for mapped_part in mapped_parts:
+            acc.append(mapped_part)
+            # Cache keys stay in mapped-path space; team-scoped keys are
+            # qualified by the anchor folder id so they can never collide
+            # with global paths (e.g. team AppData vs global TeamData).
+            key = f"{anchor}|{'/'.join(acc)}" if anchor else "/".join(acc)
             if key in self._folder_cache:
                 parent = self._folder_cache[key]
                 continue
             q = (
-                f"'{parent}' in parents and name='{_q_escape(part)}' "
+                f"'{parent}' in parents and name='{_q_escape(mapped_part)}' "
                 f"and mimeType='{FOLDER_MIME}' and trashed=false"
             )
             resp = svc.files().list(q=q, fields="files(id)", pageSize=1).execute()
@@ -221,7 +313,7 @@ class GoogleDriveBackend(DriveBackend):
                 fid = (
                     svc.files()
                     .create(
-                        body={"name": part, "mimeType": FOLDER_MIME, "parents": [parent]},
+                        body={"name": mapped_part, "mimeType": FOLDER_MIME, "parents": [parent]},
                         fields="id",
                     )
                     .execute()["id"]
@@ -338,3 +430,48 @@ class GoogleDriveBackend(DriveBackend):
             return await self._call(op)
         except (DriveAuthError, DriveError):
             return {"mode": "drive", "authorized": False, "account": None}
+
+    # ------------------------------------------------------------------ #
+    # Team-scoped Drive folders                                           #
+    # ------------------------------------------------------------------ #
+
+    async def set_team_root(self, team_id: str, folder_id: str) -> None:
+        """Pin (or clear, with "") a team's Drive folder; cache is refreshed."""
+        if folder_id:
+            self._team_roots[team_id] = folder_id
+        else:
+            self._team_roots.pop(team_id, None)
+        self._team_roots_at = time.monotonic()
+        self._folder_cache.clear()
+
+    async def folder_info(self, folder_id: str) -> dict:
+        def op(svc: Any) -> dict:
+            meta = svc.files().get(fileId=folder_id, fields="id,name,mimeType,webViewLink").execute()
+            if meta.get("mimeType") != FOLDER_MIME:
+                raise DriveError("That Drive link points to a file, not a folder")
+            return {
+                "id": meta["id"],
+                "name": meta.get("name", ""),
+                "url": meta.get("webViewLink") or drive_folder_url(folder_id),
+            }
+
+        return await self._call(op)
+
+    async def share_folder(self, folder_id: str, email: str, role: str = "writer") -> None:
+        def op(svc: Any) -> None:
+            svc.permissions().create(
+                fileId=folder_id,
+                body={"type": "user", "role": role, "emailAddress": email},
+                sendNotificationEmail=False,
+            ).execute()
+
+        await self._call(op)
+
+    async def unshare_folder(self, folder_id: str, email: str) -> None:
+        def op(svc: Any) -> None:
+            resp = svc.permissions().list(fileId=folder_id, fields="permissions(id, emailAddress)").execute()
+            for perm in resp.get("permissions", []):
+                if (perm.get("emailAddress") or "").lower() == email.lower():
+                    svc.permissions().delete(fileId=folder_id, permissionId=perm["id"]).execute()
+
+        await self._call(op)

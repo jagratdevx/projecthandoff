@@ -94,10 +94,19 @@ class FakeFiles:
         def run():
             fid = f"f{self.state['next_id']}"
             self.state["next_id"] += 1
+            # Real Drive records the media body's content type; the backend
+            # passes it via MediaInMemoryUpload rather than the request body.
+            mimetype = (
+                body.get("mimeType")
+                or getattr(media_body, "_mimetype", None)
+                or "application/octet-stream"
+            )
             meta = {
                 "name": body.get("name"),
-                "parents": body.get("parents", []),
-                "mimeType": body.get("mimeType", "application/octet-stream"),
+                # Real Drive stores parentless files in root; emulate that so
+                # "'root' in parents" searches find them after cache resets.
+                "parents": body.get("parents", ["root"]),
+                "mimeType": mimetype,
                 "content": _media_bytes(media_body),
                 "headRevisionId": str(self.state["revision"]),
             }
@@ -123,7 +132,10 @@ class FakeFiles:
             if fileId not in self.state["files"]:
                 raise FakeHttpError(404)
             meta = self.state["files"][fileId]
-            return {"id": fileId, "name": meta["name"], "headRevisionId": meta["headRevisionId"]}
+            data = {"id": fileId, "name": meta["name"], "headRevisionId": meta["headRevisionId"], "mimeType": meta.get("mimeType", "application/octet-stream")}
+            if data["mimeType"] == FOLDER_MIME:
+                data["webViewLink"] = f"https://drive.google.com/drive/folders/{fileId}"
+            return data
 
         return FakeRequest(self.state, run)
 
@@ -156,15 +168,61 @@ class FakeAbout:
         return FakeRequest(self.state, run)
 
 
+class FakePermissions:
+    def __init__(self, state):
+        self.state = state
+
+    def create(self, fileId, body, sendNotificationEmail=True, **_):
+        def run():
+            if fileId not in self.state["files"]:
+                raise FakeHttpError(404)
+            perm_id = f"p{self.state['next_perm_id']}"
+            self.state["next_perm_id"] += 1
+            self.state["permissions"].setdefault(fileId, []).append({
+                "id": perm_id,
+                "emailAddress": body.get("emailAddress", ""),
+                "role": body.get("role", "reader"),
+            })
+            return {"id": perm_id}
+
+        return FakeRequest(self.state, run)
+
+    def list(self, fileId, fields=None, **_):
+        def run():
+            if fileId not in self.state["files"]:
+                raise FakeHttpError(404)
+            return {"permissions": list(self.state["permissions"].get(fileId, []))}
+
+        return FakeRequest(self.state, run)
+
+    def delete(self, fileId, permissionId, **_):
+        def run():
+            perms = self.state["permissions"].get(fileId, [])
+            self.state["permissions"][fileId] = [p for p in perms if p["id"] != permissionId]
+            return {}
+
+        return FakeRequest(self.state, run)
+
+
 class FakeDriveService:
     def __init__(self, state=None):
-        self.state = state or {"files": {}, "next_id": 1, "revision": 100, "list_calls": 0}
+        state = state or {}
+        state.setdefault("files", {})
+        state.setdefault("next_id", 1)
+        state.setdefault("revision", 100)
+        state.setdefault("list_calls", 0)
+        state.setdefault("permissions", {})
+        state.setdefault("next_perm_id", 1)
+        self.state = state
 
     def files(self):
         return FakeFiles(self.state)
 
     def about(self):
         return FakeAbout(self.state)
+
+    def permissions(self):
+        return FakePermissions(self.state)
 
 
 def make_fake_http_error(status: int):

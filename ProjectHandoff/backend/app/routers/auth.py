@@ -9,6 +9,11 @@ from app.schemas.api import LoginIn, PasswordChangeIn, ProfileUpdateIn, Register
 from app.security import create_token, hash_password, hash_token, verify_password
 from app.services.activity import ACTION_MEMBER_JOINED
 from app.services.csvstore import now_iso, new_id
+from app.services.drive.base import DriveError
+
+import logging
+
+logger = logging.getLogger("projecthandoff")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -85,6 +90,16 @@ async def register(payload: RegisterIn, db: DbDep, settings: SettingsDep) -> dic
     if team_id:
         await db.ensure_team(team_id)
         await _log_join(db, team_id, user)
+        folder_id = team.get("drive_folder_id", "") if team else ""
+        if folder_id:
+            # The team's Drive folder is open to every member: grant this
+            # account writer access as soon as they join (best effort).
+            try:
+                await db.backend.share_folder(folder_id, email)
+            except DriveError as exc:
+                logger.warning(
+                    "Could not share the team Drive folder with %s: %s", email, exc
+                )
     invalidate_user_cache(user_id)
 
     return {"token": _make_token(settings, user), "user": user}

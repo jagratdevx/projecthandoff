@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, Link2, Send, Trash2, UserPlus } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, Link2, Send, Share2, Trash2, UserPlus } from "lucide-react";
 import { api } from "../api/client";
 import type { Invitation, Team, User } from "../api/types";
 import { useResource } from "../hooks/useResource";
@@ -41,9 +41,9 @@ export function TeamPage() {
     0,
   );
 
-  const [teamForm, setTeamForm] = useState({ name: "", description: "" });
+  const [teamForm, setTeamForm] = useState({ name: "", description: "", drive_folder_url: "" });
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", drive_folder_url: "" });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role: "member" });
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
@@ -82,6 +82,19 @@ export function TeamPage() {
               </Field>
               <Field label="Description">
                 <Textarea value={teamForm.description} onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })} placeholder="What does this team do?" />
+              </Field>
+              <Field label="Team Google Drive folder">
+                <Input
+                  required
+                  value={teamForm.drive_folder_url}
+                  onChange={(e) => setTeamForm({ ...teamForm, drive_folder_url: e.target.value })}
+                  placeholder="https://drive.google.com/drive/folders/…"
+                />
+                <p className="mt-1.5 text-xs text-zinc-500">
+                  Create a folder in Google Drive and paste its link here. Everything the team stores —
+                  uploads, completed work, handover files — lives in that folder, and it is shared with every
+                  member automatically as they join.
+                </p>
               </Field>
               <Button type="submit" loading={saving} className="w-full">
                 <UserPlus className="h-4 w-4" aria-hidden /> Create team
@@ -163,6 +176,22 @@ export function TeamPage() {
     }
   };
 
+  const shareFolder = async () => {
+    try {
+      const result = await api<{ shared: number; failed: string[]; members: number }>(
+        `/api/teams/${team.team_id}/drive/share`,
+        { method: "POST" },
+      );
+      if (result.failed.length) {
+        toast.push("error", `Shared with ${result.shared}/${result.members} — could not grant: ${result.failed.join(", ")}`);
+      } else {
+        toast.push("success", `Folder shared with all ${result.members} members`);
+      }
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Sharing failed");
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -173,7 +202,7 @@ export function TeamPage() {
             <Button
               variant="secondary"
               onClick={() => {
-                setEditForm({ name: team.name, description: team.description });
+                setEditForm({ name: team.name, description: team.description, drive_folder_url: team.drive_folder_url ?? "" });
                 setEditOpen(true);
               }}
             >
@@ -182,6 +211,39 @@ export function TeamPage() {
           )
         }
       />
+
+      {/* Team Drive folder */}
+      {team.drive_folder_id && (
+        <Card className="mb-6">
+          <CardHeader
+            title="Team Drive folder"
+            action={
+              isAdmin && (
+                <Button variant="secondary" onClick={() => void shareFolder()}>
+                  <Share2 className="h-4 w-4" aria-hidden /> Share with all members
+                </Button>
+              )
+            }
+          />
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+            <FolderOpen className="h-5 w-5 shrink-0 text-indigo-500" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <a
+                href={team.drive_folder_url || `https://drive.google.com/drive/folders/${team.drive_folder_id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+              >
+                Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              </a>
+              <p className="text-xs text-zinc-500">
+                All team files — uploads, handover attachments, task deliverables and the app's data tables —
+                are stored in this shared folder. New members are granted access automatically when they join.
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Members */}
       <Card className="mb-6">
@@ -291,6 +353,17 @@ export function TeamPage() {
           </Field>
           <Field label="Description">
             <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+          </Field>
+          <Field label="Team Google Drive folder">
+            <Input
+              value={editForm.drive_folder_url}
+              onChange={(e) => setEditForm({ ...editForm, drive_folder_url: e.target.value })}
+              placeholder="https://drive.google.com/drive/folders/…"
+            />
+            <p className="mt-1.5 text-xs text-zinc-500">
+              Paste a Drive folder link to store all team files there (shared with every member). Clear the
+              field to unlink; files already uploaded stay where they are.
+            </p>
           </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>

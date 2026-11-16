@@ -4,13 +4,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app.deps import CurrentUser, SettingsDep, require_roles
-from app.security import create_signed_state, verify_signed_state
+from app.security import create_signed_state, read_signed_state
 from app.services.csvstore import now_iso
+from app.services.drive.google_drive import SCOPES as DRIVE_SCOPES
 from app.services.drive.google_drive import GoogleDriveBackend
 
 router = APIRouter(prefix="/api", tags=["sync"])
 
-OAUTH_SCOPE = "https://www.googleapis.com/auth/drive.file"
 TOKEN_EXCHANGE_URL = "https://oauth2.googleapis.com/token"
 
 
@@ -62,7 +62,7 @@ async def oauth_start(settings: SettingsDep, request: Request, frontend_redirect
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_oauth_redirect_uri,
         "response_type": "code",
-        "scope": OAUTH_SCOPE,
+        "scope": " ".join(DRIVE_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
         "include_granted_scopes": "true",
@@ -81,14 +81,36 @@ async def oauth_callback(
 ):
     if error:
         return RedirectResponse(f"{settings.frontend_url}/settings?drive=error")
-    if not state or not verify_signed_state(state, settings.secret_key):
+    nonce = read_signed_state(state, settings.secret_key)
+    if not state or nonce is None:
         return RedirectResponse(f"{settings.frontend_url}/settings?drive=error&reason=state")
     if not code:
         return RedirectResponse(f"{settings.frontend_url}/settings?drive=error&reason=missing_code")
 
+    # Return the user to the page that started the flow (wizard or settings).
+    # Only local paths are honored — the nonce is signed, but stay strict.
+    frontend_redirect = nonce.split("|", 1)[0]
+    if not frontend_redirect.startswith("/"):
+        frontend_redirect = "/settings"
+
     import json
+    import pathlib
+    import time as _time
 
     import httpx
+
+    backend = request.app.state.backend
+    # Browsers sometimes fire the callback twice (speculative re-requests).
+    # The auth code is single-use; if a token was just written, treat the
+    # duplicate as the success it already was instead of flashing an error.
+    token_path = pathlib.Path(settings.google_token_file)
+    if (
+        code
+        and isinstance(backend, GoogleDriveBackend)
+        and backend.token_file_exists()
+        and _time.time() - token_path.stat().st_mtime < 120
+    ):
+        return RedirectResponse(f"{settings.frontend_url}{frontend_redirect}?drive=connected")
 
     response = await httpx.AsyncClient().post(
         TOKEN_EXCHANGE_URL,
@@ -112,19 +134,15 @@ async def oauth_callback(
         "token_uri": token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
         "client_id": settings.google_client_id,
         "client_secret": settings.google_client_secret,
-        "scopes": (token_data.get("scope") or OAUTH_SCOPE).split() or [OAUTH_SCOPE],
+        "scopes": (token_data.get("scope") or " ".join(DRIVE_SCOPES)).split() or DRIVE_SCOPES,
     }
-    backend = request.app.state.backend
     if isinstance(backend, GoogleDriveBackend):
         backend.save_oauth_token(payload)
     else:
-        import pathlib
+        token_path.parent.mkdir(parents=True, exist_ok=True)
+        token_path.write_text(json.dumps(payload), "utf-8")
 
-        path = pathlib.Path(settings.google_token_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload), "utf-8")
-
-    return RedirectResponse(f"{settings.frontend_url}/settings?drive=connected")
+    return RedirectResponse(f"{settings.frontend_url}{frontend_redirect}?drive=connected")
 
 
 @router.post("/drive/oauth/disconnect")

@@ -24,6 +24,9 @@ credentials*.json
 # Local development storage (explicitly non-production mode)
 backend/data/
 data/
+backend/TeamData/
+backend/Backups/
+backend/_index.json
 
 # OS noise
 .DS_Store

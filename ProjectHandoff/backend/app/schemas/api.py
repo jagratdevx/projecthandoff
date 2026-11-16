@@ -68,11 +68,14 @@ class TokenOut(BaseModel):
 class TeamCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str = Field(default="", max_length=500)
+    # Google Drive folder link (or bare folder ID) the whole team will use.
+    drive_folder_url: str = Field(default="", max_length=2000)
 
 
 class TeamUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     description: str | None = Field(default=None, max_length=500)
+    drive_folder_url: str | None = Field(default=None, max_length=2000)
 
 
 class MemberUpdateIn(BaseModel):

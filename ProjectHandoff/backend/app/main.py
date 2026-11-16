@@ -14,6 +14,7 @@ from app.routers import (
     attachments as attachments_router,
     auth as auth_router,
     dashboard as dashboard_router,
+    setup as setup_router,
     sync as sync_router,
     events as events_router,
     handovers as handovers_router,
@@ -42,6 +43,10 @@ def _error(status: int, detail: str) -> JSONResponse:
 
 def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     settings = settings or Settings()
+    # First-run wizard: restore client credentials entered through the UI.
+    from app.routers.setup import load_stored_client
+
+    load_stored_client(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -139,6 +144,7 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
     app.include_router(activity_router.router)
     app.include_router(dashboard_router.router)
     app.include_router(sync_router.router)
+    app.include_router(setup_router.router)
 
     @app.get("/api/health", tags=["health"])
     async def health() -> dict:

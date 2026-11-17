@@ -90,13 +90,18 @@ export function useResource<T>(
     return () => window.clearInterval(interval);
   }, [pollMs, load]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Reset on (re)mount. React StrictMode (dev) mounts → unmounts →
+    // remounts every component; the cleanup below flips this flag off and
+    // the remount MUST flip it back on, otherwise every future fetch result
+    // is discarded: requests keep returning 200 while the page spins on its
+    // skeleton forever, with no error anywhere.
+    mounted.current = true;
+    return () => {
       mounted.current = false;
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
 
   return { ...state, reload, setData: (value) => setState((prev) => ({ ...prev, data: typeof value === "function" ? (value as (d: T | null) => T | null)(prev.data) : value })) };
 }

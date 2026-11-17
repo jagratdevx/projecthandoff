@@ -109,7 +109,7 @@ class LocalDriveBackend(DriveBackend):
             self._save_index()
             return file_id
 
-    async def download_file(self, file_id: str) -> bytes:
+    async def download_file(self, file_id: str, team_id: str = "") -> bytes:
         async with self._io_lock:
             self._load_index()
             rel = self._index.get(file_id)
@@ -120,7 +120,7 @@ class LocalDriveBackend(DriveBackend):
                 raise NotFoundError(f"File missing on disk: {file_id}")
             return target.read_bytes()
 
-    async def delete_file(self, file_id: str) -> None:
+    async def delete_file(self, file_id: str, team_id: str = "") -> None:
         async with self._io_lock:
             self._load_index()
             rel = self._index.get(file_id)

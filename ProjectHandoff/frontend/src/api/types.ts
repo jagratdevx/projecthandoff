@@ -26,6 +26,15 @@ export interface Team {
   drive_folder_url?: string;
 }
 
+/** GET /api/teams/{id}/drive/status */
+export interface TeamDriveStatus {
+  storage_mode: string;
+  client_configured: boolean;
+  connected: boolean;
+  account: string | null;
+  folder: { id: string; url: string } | null;
+}
+
 export interface Project {
   project_id: string;
   name: string;

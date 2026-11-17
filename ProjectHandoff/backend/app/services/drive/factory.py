@@ -10,9 +10,11 @@ from .local import LocalDriveBackend
 def create_drive_backend(settings: Settings) -> DriveBackend:
     """Resolve the storage backend from settings.
 
-    Never silently falls back: with PH_STORAGE_MODE=auto, Drive is used when an
-    OAuth token file exists; otherwise start-up fails with instructions unless
-    the operator explicitly opted into local development storage.
+    Multi-tenant model: in drive mode each team connects its own Google
+    account at team creation — no host-wide token is required to boot. An
+    optional legacy host token (PH_GOOGLE_TOKEN_FILE) keeps single-organizer
+    deployments working and holds the global registry. ``auto`` uses a host
+    token when present, otherwise explicit local development storage.
     """
     mode = settings.storage_mode.strip().lower()
 
@@ -34,8 +36,8 @@ def create_drive_backend(settings: Settings) -> DriveBackend:
             return LocalDriveBackend(settings.local_data_dir)
         raise RuntimeError(
             "No Google Drive OAuth token found and local storage is not enabled.\n"
-            "  1. Set PH_GOOGLE_CLIENT_ID / PH_GOOGLE_CLIENT_SECRET in ProjectHandoff/.env\n"
-            "  2. Start the backend and open the Settings page to authorize Drive, or\n"
+            "  1. Set PH_STORAGE_MODE=drive (multi-tenant: teams connect their own Google accounts), or\n"
+            "  2. Authorize a host account via Settings (PH_GOOGLE_CLIENT_ID / PH_GOOGLE_CLIENT_SECRET), or\n"
             "  3. Explicitly set PH_STORAGE_MODE=local AND PH_ALLOW_LOCAL_STORAGE=true for development."
         )
 

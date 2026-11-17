@@ -30,11 +30,15 @@ async def setup_status(request: Request) -> dict:
     backend = request.app.state.backend
     client_configured = settings.drive_configured
     authorized = backend.mode == "drive" and backend.token_file_exists()
+    # Multi-tenant drive mode: each team connects its own Google account at
+    # team creation, so the deployment boots with zero host-side Google
+    # setup. A host connection (wizard) is only ever optional now.
+    needs_setup = False
     return {
         "storage_mode": backend.mode,
         "client_configured": client_configured,
         "authorized": authorized,
-        "needs_setup": backend.mode == "drive" and not authorized,
+        "needs_setup": needs_setup,
         # Public by nature (registered in the Google Cloud console), shown in
         # the wizard so the organizer knows exactly what to paste there.
         "redirect_uri": settings.google_oauth_redirect_uri,

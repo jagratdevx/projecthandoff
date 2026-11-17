@@ -70,6 +70,29 @@ class TeamCreateIn(BaseModel):
     description: str = Field(default="", max_length=500)
     # Google Drive folder link (or bare folder ID) the whole team will use.
     drive_folder_url: str = Field(default="", max_length=2000)
+    # The team's own Google OAuth client (multi-tenant): the creator brings
+    # their own client credentials and connects their own Drive account.
+    # Ignored in local development mode.
+    drive_client_id: str = Field(default="", max_length=300)
+    drive_client_secret: str = Field(default="", max_length=300)
+    drive_redirect_uri: str = Field(default="", max_length=300)
+
+
+class TeamDriveConnectIn(BaseModel):
+    """OAuth client credentials for a team connecting its own Google Drive."""
+
+    client_id: str = Field(min_length=10, max_length=300)
+    client_secret: str = Field(min_length=8, max_length=300)
+    redirect_uri: str = Field(default="", max_length=300)
+
+
+class TeamDriveFolderIn(BaseModel):
+    """The team's shared Drive folder link (pasted after connecting).
+
+    An empty string unlinks the folder.
+    """
+
+    drive_folder_url: str = Field(default="", max_length=2000)
 
 
 class TeamUpdateIn(BaseModel):

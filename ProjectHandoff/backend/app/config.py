@@ -75,3 +75,16 @@ class Settings(BaseSettings):
     @property
     def drive_configured(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def team_oauth_redirect_uri(self) -> str:
+        """Default OAuth redirect for per-team connections.
+
+        Derived from the host redirect URI so an operator who deployed behind
+        a custom domain only configures one URI in .env. The Google console
+        registration for team owners points at the teams callback.
+        """
+        uri = self.google_oauth_redirect_uri.rstrip("/")
+        if uri.endswith("/api/drive/oauth/callback"):
+            return uri[: -len("/api/drive/oauth/callback")] + "/api/teams/drive/oauth/callback"
+        return self.google_oauth_redirect_uri

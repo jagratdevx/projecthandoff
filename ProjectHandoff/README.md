@@ -2,7 +2,7 @@
 
 A production-quality team coordination web app for student clubs — with a **structured task handover** workflow as its headline feature. Built with a React + TypeScript frontend and a FastAPI backend that uses **Google Drive as its only persistent store** (CSV files are the source of truth; uploads live in Drive folders).
 
-> **Why Drive?** The team's data (members, projects, tasks, handovers, events, uploads) lives inside a single organizer's Google Drive. There is no server-side database: every record is a row in a CSV file, every upload is a Drive file, and the organizer owns all of it.
+> **Why Drive?** The team's data (members, projects, tasks, handovers, events, uploads) lives inside the team's own Google Drive. There is no server-side database: every record is a row in a CSV file, every upload is a Drive file, and the team owns all of it.
 
 ---
 
@@ -15,7 +15,7 @@ ProjectHandoff turns "handing over" into a **first-class, structured workflow** 
 - Work is tracked as **tasks** with owners, deadlines and states — so "what's left?" always has an answer.
 - When someone can't continue, they fill a **structured handover record** (completed work, remaining work, blockers, next actions, files…) and the receiver must explicitly **accept** it. Nothing silently changes hands.
 - Every action lands in a **team activity feed** — an audit trail of who did what, when.
-- And the club **owns its own data**: everything lives in a Google Drive folder the organizer controls, shared with the members. If the app server dies tomorrow, the data is still sitting in Drive as plain, readable CSVs and files. No vendor lock-in, no database server to maintain, no hosting fees for storage.
+- And the club **owns its own data**: everything lives in a Google Drive folder the team controls, shared with the members. If the app server dies tomorrow, the data is still sitting in Drive as plain, readable CSVs and files. No vendor lock-in, no database server to maintain, no hosting fees for storage.
 
 It is deliberately built to be run by *one person with a Google account and one small server* (a laptop, a Raspberry Pi, a free-tier VM) — not by a DevOps team.
 
@@ -28,7 +28,7 @@ Most apps put your data in someone else's database and give you an export button
 ## Features
 
 - **Accounts & teams** — register, log in, create a team, invite members via single-use 7-day invite links (email must match on registration), role management (owner / admin / coordinator / member).
-- **Team-owned Drive folders** — at team setup you paste a Google Drive folder link; the app verifies it, stores *all* of the team's files and data tables inside it, and grants every member writer access automatically (revoked when they're removed). No central server-side storage at all.
+- **Bring-your-own Drive, per team** — at team creation the creator pastes their *own* Google OAuth client and connects their *own* Google account once; the team's folder link pins all the team's files and data tables inside their Drive, and every member gets writer access automatically (revoked when they're removed). Members never see Google anything — they just log in. Multi-tenant ready: every team owns its credentials, its folder and its data.
 - **Projects** — list/create/archive projects with owners, priorities and progress.
 - **Tasks** — full task lifecycle (Not Started → In Progress → Blocked → Under Review → Completed), assignees, deadlines, priorities, version-stamped updates, comments, attachments.
 - **Structured handovers** — the core feature. A task owner hands a task to a teammate by filling a structured handover record: *completed work, remaining work, current state, blockers, next actions, relevant files, notes*. The proposed owner can **accept**, **reject** (with reason), or **request clarification**; the previous owner can **respond** or **cancel**. Every step is logged on the task as comments and in the team activity feed. Acceptance reassigns the task and bumps its version.
@@ -37,7 +37,7 @@ Most apps put your data in someone else's database and give you an export button
 - **Activity feed** — audit-style, reverse-chronological log of everything happening in the team.
 - **Dashboard** — open tasks, pending handovers, upcoming/overdue deadlines, team size, recent activity.
 - **Live-sync UX** — data refreshes right after your actions and polls the server every 10–15 s; a sync indicator shows transport health and the last successful sync. Requests for the screen you're on are prioritized over background syncing, and failed syncs retry themselves with backoff.
-- **First-run setup wizard** — paste your Google OAuth credentials into a browser wizard once; no `.env` editing of secrets required.
+- **Bring-your-own Google Drive** — each team connects its own Google account once at team creation; members never see a Google prompt.
 - **Light/dark theme**, responsive layout, accessible controls.
 
 ## Stack
@@ -46,7 +46,7 @@ Most apps put your data in someone else's database and give you an export button
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite, Tailwind CSS, React Router, lucide-react |
 | Backend | Python 3.14, FastAPI, Pydantic / pydantic-settings, google-api-python-client |
-| Storage | Google Drive (organizer account) — CSV data tables + upload folders. Explicit local-mode fallback for development. |
+| Storage | Google Drive (each team's own account) — CSV data tables + upload folders. Optional single-organizer "host" mode and an explicit local-mode fallback for development. |
 | Tests | pytest (backend, 117 tests), `tsc --noEmit` + production Vite build (frontend) |
 
 ---
@@ -59,7 +59,7 @@ Most apps put your data in someone else's database and give you an export button
 cd ProjectHandoff/backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-cp ../.env.example ../.env   # set PH_STORAGE_MODE=drive for production; secrets go in the /setup wizard
+cp ../.env.example ../.env   # set PH_STORAGE_MODE=drive for production; teams bring their own Google credentials at team creation
 ```
 
 For **development without Google credentials** (explicit, opt-in local mode):
@@ -92,13 +92,13 @@ Other scripts: `npm run check` (typecheck), `npm run build` (typecheck + product
 
 ---
 
-## Google Drive setup (production) — step by step
+## Google Drive setup — step by step
 
-This is the one-time "Google thing". You do it once as the **organizer** (the person whose Drive will hold all team data). Ten minutes, no credit card, no paid tier needed — the free Google account quotas are far beyond what a club team needs.
+Each team connects **its own** Google account at team creation — the creator does this once; members never touch Google anything. Ten minutes, no credit card, no paid tier needed — the free Google account quotas are far beyond what a club team needs.
 
 ### Step 1 — Create a Google Cloud project
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with the **organizer's Google account** (the account whose Drive will store the data).
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and sign in with the **team creator's Google account** (the account whose Drive will store the data).
 2. In the top bar, open the project picker → **New project** → name it (e.g. `ProjectHandoff`) → **Create**.
 3. Make sure that project is selected in the top bar for everything below.
 
@@ -112,49 +112,43 @@ This is the one-time "Google thing". You do it once as the **organizer** (the pe
 1. **APIs & Services → OAuth consent screen** → User type: **External** → **Create**.
 2. Fill in the required fields: app name (e.g. `ProjectHandoff`), a user support email (yours), and developer contact email (yours). Branding domains are optional.
 3. On the **Scopes** step: **Add or remove scopes** → search for and add `https://www.googleapis.com/auth/drive` (the full Drive scope — the backend needs it to verify the team's folder and to grant/revoke member access to it on your behalf).
-4. On the **Test users** step: **+ Add users** → add the organizer's Google account. While the app is in *Testing*, only these accounts can authorize it — which is exactly what you want.
+4. On the **Test users** step: **+ Add users** → add the creator's Google account. While the app is in *Testing*, only these accounts can authorize it — which is exactly what you want.
 5. Save.
 
-> **Testing vs Production:** while the consent screen is in *Testing*, Google expires the connection every **7 days** — the organizer just clicks *Authorize Google Drive* in Settings again (10 seconds). If you flip the app to *In production*, the connection stops expiring, but Google shows an **"unverified app" warning** before consent (click *Advanced → Go to ProjectHandoff*). Google's verification process is only required once you have 100+ users — a club can happily ignore it and click through the warning, or stay in Testing and re-authorize weekly.
+> **Testing vs Production:** while the consent screen is in *Testing*, Google expires the connection every **7 days** — the creator just clicks **Reconnect Google** on the team page (10 seconds). If you flip the app to *In production*, the connection stops expiring, but Google shows an **"unverified app" warning** before consent (click *Advanced → Go to ProjectHandoff*). Google's verification process is only required once you have 100+ users — a club can happily ignore it and click through the warning, or stay in Testing and re-authorize weekly.
 
 ### Step 4 — Create the OAuth client
 
 1. **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 2. Application type: **Web application**.
-3. **Authorized redirect URIs** — add *exactly* the backend's callback URL (this must match `PH_GOOGLE_OAUTH_REDIRECT_URI` character-for-character):
-   - local development: `http://localhost:8000/api/drive/oauth/callback`
-   - production: `https://<your-backend-host>/api/drive/oauth/callback`
+3. **Authorized redirect URIs** — add *exactly* the team OAuth callback (the create-team form shows this URI; it must match character-for-character):
+   - local development: `http://localhost:8000/api/teams/drive/oauth/callback`
+   - production: `https://<your-backend-host>/api/teams/drive/oauth/callback`
 4. **Create**, then copy the **Client ID** and **Client secret**.
 
-### Step 5 — Hand the credentials to the app
+### Step 5 — Create the team in the app
 
-Two ways — pick one:
+1. Register in the app and open the **Team** page.
+2. Fill the team name/description and paste the **client ID + secret** from Step 4. The form shows you the exact redirect URI to register in Google's console (Step 4.3).
+3. **Create team & connect Drive** → you're redirected to Google → sign in with the creator's account and approve (click through the *unverified app* warning if shown).
+4. Back on the team page, **Link folder**: paste the link of a Drive folder in the creator's Drive (in Drive: select the folder → *Share → Copy link*, or copy from the browser address bar). The app verifies access through the team's own connection, migrates any staged data into it, and grants every member **writer access** — removing a member revokes it automatically.
 
-- **The setup wizard (recommended):** start the backend with `PH_STORAGE_MODE=drive` in `.env`, open the app in a browser. Because no client is configured yet, it redirects to the **`/setup` wizard**. Paste the Client ID + Secret there and click save — they're stored server-side in the gitignored `.tokens/` folder (never in Drive, never committed, never in `.env`).
-- **Via `.env`:** fill `PH_GOOGLE_CLIENT_ID`, `PH_GOOGLE_CLIENT_SECRET`, `PH_GOOGLE_OAUTH_REDIRECT_URI` in `ProjectHandoff/.env`.
+That's it. The connection is remembered server-side (gitignored `.tokens/teams/{team_id}/`) — the creator is never asked to authorize again (unless they disconnect or Google expires a Testing-mode token). Everything the team does — tasks, uploads, handovers — flows into that folder, and members just log in and work.
 
-### Step 6 — Connect the organizer's Drive
+### Legacy single-organizer mode (optional)
 
-In the wizard (or later from **Settings → Storage & synchronization**), click **Connect Google Drive**, sign in as the organizer, and approve (click through the *unverified app* warning if shown). The backend stores the OAuth token in `.tokens/token.json` (gitignored) and now reads/writes your Drive on the team's behalf.
-
-### Step 7 — Create the team and its Drive folder
-
-1. In [Google Drive](https://drive.google.com) (organizer account): **New → Folder** — name it after the team, e.g. `Ecolloseum`. This folder is about to hold *everything*: the app's data tables, every upload, and automatic backups.
-2. In the app: **Create team** and paste the folder's link (in Drive: select the folder → *Share → Copy link*, or just copy it from the browser address bar). The app verifies it can access the folder and pins all team data inside it.
-3. As members join (or when you re-share via the team page), the app grants each one **writer access** to that folder; removing a member revokes it automatically.
-
-That's it. From here on, everything the team does — creating tasks, uploading files, handing work over — flows into that folder.
+One club self-hosting its own copy can skip per-team setup entirely: fill `PH_GOOGLE_CLIENT_ID`/`PH_GOOGLE_CLIENT_SECRET` (or use the `/setup` wizard once), authorize the **organizer's** account on **Settings → Storage & synchronization**, and create the team without Google fields — data then flows through that single organizer account at `http://localhost:8000/api/drive/oauth/callback`. This "host" layout is preserved byte-for-byte for existing deployments.
 
 ### Troubleshooting Google setup
 
 | Symptom | Cause & fix |
 | --- | --- |
-| `redirect_uri_mismatch` at Google login | The redirect URI in Step 4 doesn't exactly match `PH_GOOGLE_OAUTH_REDIRECT_URI` (scheme, host, port, path). Copy-paste it. |
-| **"Google hasn't verified this app"** screen | Normal for an unverified app. Click **Advanced → Go to ProjectHandoff (unsafe)** — it's your own app. To avoid the screen, keep the app in Testing and be listed as a test user. |
+| `redirect_uri_mismatch` at Google login | The redirect URI in Step 4 doesn't exactly match the one shown in the create-team form (scheme, host, port, path). Copy-paste it. |
+| **"Google hasn't verified this app"** screen | Normal for an unverified app. Click **Advanced → Go to ProjectHandoff (unsafe)** — it's the team's own app. To avoid the screen, keep the app in Testing and be listed as a test user. |
 | **"Access blocked: app tried to access sensitive info"** | Your account isn't a **test user** (Step 3.4), or the app was published without you having authorized it before. Add yourself as a test user. |
-| Connection stops working after ~a week | The consent screen is in **Testing** — Google expires refresh tokens after 7 days. Re-authorize from Settings, or publish the app (see the note in Step 3). |
-| "That Drive folder was not found" when creating the team | The link is wrong, or the connected organizer account can't see the folder. Make sure the folder lives in (or is shared with) the organizer account, and paste the full `https://drive.google.com/drive/folders/…` link. |
-| Token file errors on startup | `.tokens/` was deleted or `PH_GOOGLE_TOKEN_FILE` points elsewhere — re-authorize from Settings. |
+| Connection stops working after ~a week | The consent screen is in **Testing** — Google expires refresh tokens after 7 days. Click **Reconnect Google** on the team page, or publish the app (see the note in Step 3). |
+| "That Drive folder was not found" when linking | The link is wrong, or the team's connected account can't see the folder. Make sure the folder lives in (or is shared with) the connected account, and paste the full `https://drive.google.com/drive/folders/…` link. |
+| Team page says "not connected" suddenly | Google revoked/expired the token (Testing-mode expiry, password change, or manual revoke at myaccount.google.com/permissions). Click **Reconnect Google**. |
 
 ---
 
@@ -255,7 +249,7 @@ When you can't carry a task anymore (graduating, exams, switching teams):
 | `PH_LOCAL_DATA_DIR` | local-mode data directory (default `<ProjectHandoff>/data`) |
 | `PH_GOOGLE_CLIENT_ID/SECRET` | Google OAuth client credentials (or enter once in the `/setup` wizard) |
 | `PH_GOOGLE_OAUTH_REDIRECT_URI` | must match the Google Cloud console exactly |
-| `PH_GOOGLE_TOKEN_FILE` | where the organizer OAuth token is stored (gitignored) |
+| `PH_GOOGLE_TOKEN_FILE` | where the optional host OAuth token is stored (gitignored); team tokens live next to it under `teams/{team_id}/` |
 | `PH_DRIVE_ROOT_FOLDER_ID/NAME` | pin an existing Drive folder or auto-create one |
 | `PH_MAX_UPLOAD_MB`, `PH_ALLOWED_EXTENSIONS` | upload validation |
 | `PH_CORS_ORIGINS`, `PH_FRONTEND_URL` | CORS + OAuth post-callback redirect |
@@ -336,7 +330,7 @@ Teams without a linked folder keep their data under `<root>/TeamData/{team_id}/�
 - Passwords: PBKDF2-HMAC-SHA256, 200 000 iterations, per-password salt, constant-time comparison.
 - Tokens: stateless HMAC-signed claims (user, team, role, exp); 401 responses clear the client token and redirect to login.
 - Invitations: stored as SHA-256 hashes; single-use; expire after 7 days; the invitee's email must match the invited address.
-- Drive scope: the organizer authorizes with full `https://www.googleapis.com/auth/drive` scope — required so the backend can read/verify team folders the organizer created manually and manage sharing permissions on the team's behalf. Team folders are shared per-member (writer) when they join and unshared when they're removed.
+- Drive scope: each team authorizes with full `https://www.googleapis.com/auth/drive` scope from its own Google account — required so the backend can read/verify the team's folder (which the creator made manually) and manage sharing permissions on the team's behalf. Team folders are shared per-member (writer) when they join and unshared when they're removed. Team tokens and OAuth clients are stored server-side under `.tokens/teams/{team_id}/` (gitignored) and never logged or exported.
 - OAuth state: signed and verified on the callback; the post-login redirect path is validated to be a local path only.
 - Uploads: extension allow-list, size cap, filename sanitization, non-guessable storage keys.
 - Secrets (`.env`, OAuth tokens, client secrets) are gitignored and never logged.

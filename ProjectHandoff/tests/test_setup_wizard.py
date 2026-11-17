@@ -22,18 +22,20 @@ def _drive_settings(tmp_path, **overrides):
     return make_settings(tmp_path, storage_mode="drive", **overrides)
 
 
-def test_drive_mode_unconfigured_status_and_rejected_client_change(tmp_path):
+def test_drive_mode_unconfigured_status_allows_boot_without_host_setup(tmp_path):
+    """Multi-tenant: drive mode boots with zero host-side Google setup; the
+    legacy host wizard stays available but is optional."""
     app = create_app(_drive_settings(tmp_path))
     with TestClient(app) as client:
         status = client.get("/api/setup/status").json()
-        assert status["needs_setup"] is True
+        assert status["needs_setup"] is False
         assert status["client_configured"] is False
         assert status["redirect_uri"].endswith("/api/drive/oauth/callback")
 
-        # oauth start refuses while unconfigured
+        # oauth start (host session) still refuses while unconfigured
         assert client.get("/api/drive/oauth/start").status_code == 503
 
-        # configuring works on the first run
+        # a host client can be configured once, for legacy single-organizer use
         response = client.post(
             "/api/setup/drive-client",
             json={"client_id": "id.apps.googleusercontent.com", "client_secret": "GOCSPX-secret"},

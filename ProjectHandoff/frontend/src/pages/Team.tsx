@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Check, Copy, ExternalLink, FolderOpen, Link2, Send, Share2, Trash2, UserPlus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Copy, ExternalLink, FolderOpen, Link2, RefreshCw, Send, Share2, Trash2, UserPlus } from "lucide-react";
 import { api } from "../api/client";
-import type { Invitation, Team, User } from "../api/types";
+import type { Invitation, Team, TeamDriveStatus, User } from "../api/types";
 import { useResource } from "../hooks/useResource";
 import { useAuth } from "../state/AuthContext";
 import { useToast } from "../state/ToastContext";
@@ -20,6 +20,9 @@ import {
   Textarea,
 } from "../components/ui";
 import { formatDate } from "../lib/format";
+
+const DRIVE_SETUP_HELP =
+  "One-time, free (~10 minutes): console.cloud.google.com → create a project → enable the Google Drive API → OAuth consent screen (External, add yourself as test user) → Credentials → OAuth client ID → Web application. Paste the redirect URI below as an Authorized redirect URI, then copy the client ID and secret here.";
 
 export function TeamPage() {
   const { user, refresh } = useAuth();
@@ -41,15 +44,54 @@ export function TeamPage() {
     0,
   );
 
-  const [teamForm, setTeamForm] = useState({ name: "", description: "", drive_folder_url: "" });
+  const { data: driveStatus, reload: reloadDriveStatus } = useResource<TeamDriveStatus>(
+    () => (team ? api(`/api/teams/${team.team_id}/drive/status`) : Promise.resolve({
+      storage_mode: "local", client_configured: false, connected: false, account: null, folder: null,
+    })),
+    [team?.team_id],
+    0,
+  );
+
+  // One-time OAuth return from Google (?drive=connected|error&reason=…)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("drive") === "connected") {
+      toast.push("success", "Google Drive connected — now paste your team folder link to finish");
+      reloadDriveStatus();
+    } else if (params.get("drive") === "error") {
+      const reason = params.get("reason");
+      toast.push("error", reason === "denied"
+        ? "Google authorization was cancelled — click Connect again to retry"
+        : "Google authorization failed — please try again from the team page");
+    }
+    if (params.has("drive")) {
+      params.delete("drive");
+      params.delete("reason");
+      const clean = params.toString();
+      window.history.replaceState({}, "", `${window.location.pathname}${clean ? `?${clean}` : ""}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const [teamForm, setTeamForm] = useState({ name: "", description: "", drive_client_id: "", drive_client_secret: "" });
+  const [redirectUri, setRedirectUri] = useState("");
+  useEffect(() => {
+    api<{ redirect_uri: string }>("/api/teams/drive/oauth/defaults")
+      .then((d) => setRedirectUri(d.redirect_uri))
+      .catch(() => {});
+  }, []);
+
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", description: "", drive_folder_url: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ email: "", role: "member" });
   const [lastInvite, setLastInvite] = useState<Invitation | null>(null);
   const [copied, setCopied] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState<User | null>(null);
   const [saving, setSaving] = useState(false);
+  const [folderOpen, setFolderOpen] = useState(false);
+  const [folderForm, setFolderForm] = useState({ drive_folder_url: "" });
+  const [linking, setLinking] = useState(false);
 
   // ------------------------------------------------------------------ create team
   if (!team) {
@@ -65,7 +107,18 @@ export function TeamPage() {
                 event.preventDefault();
                 setSaving(true);
                 try {
-                  await api("/api/teams", { method: "POST", body: teamForm });
+                  const created = await api<Team & { authorize_url?: string; next_step?: string }>("/api/teams", {
+                    method: "POST",
+                    body: teamForm,
+                  });
+                  if (created.authorize_url) {
+                    // One-time Google consent for the team owner — members
+                    // never see this. Google returns to /team afterwards.
+                    await refresh();
+                    toast.push("success", "Team created — taking you to Google to connect your Drive…");
+                    window.location.href = created.authorize_url;
+                    return;
+                  }
                   toast.push("success", "Team created");
                   await refresh();
                   void reload();
@@ -83,23 +136,46 @@ export function TeamPage() {
               <Field label="Description">
                 <Textarea value={teamForm.description} onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })} placeholder="What does this team do?" />
               </Field>
-              <Field label="Team Google Drive folder">
-                <Input
-                  required
-                  value={teamForm.drive_folder_url}
-                  onChange={(e) => setTeamForm({ ...teamForm, drive_folder_url: e.target.value })}
-                  placeholder="https://drive.google.com/drive/folders/…"
-                />
-                <p className="mt-1.5 text-xs text-zinc-500">
-                  Create a folder in Google Drive and paste its link here. Everything the team stores —
-                  uploads, completed work, handover files — lives in that folder, and it is shared with every
-                  member automatically as they join.
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3.5 dark:border-indigo-900 dark:bg-indigo-950/40">
+                <p className="mb-3 text-sm font-medium text-indigo-900 dark:text-indigo-200">
+                  Connect your Google Drive — all team files live in a folder you own
                 </p>
-              </Field>
+                <div className="space-y-3">
+                  <Field label="Google OAuth client ID">
+                    <Input
+                      required
+                      value={teamForm.drive_client_id}
+                      onChange={(e) => setTeamForm({ ...teamForm, drive_client_id: e.target.value })}
+                      placeholder="1234….apps.googleusercontent.com"
+                    />
+                  </Field>
+                  <Field label="Google OAuth client secret">
+                    <Input
+                      required
+                      type="password"
+                      value={teamForm.drive_client_secret}
+                      onChange={(e) => setTeamForm({ ...teamForm, drive_client_secret: e.target.value })}
+                      placeholder="GOCSPX-…"
+                    />
+                  </Field>
+                  <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                    <p className="font-medium">Add this redirect URI in your Google Cloud console:</p>
+                    <code className="mt-1 block break-all rounded bg-zinc-100 px-2 py-1 font-mono text-[11px] dark:bg-zinc-800">
+                      {redirectUri || "loading…"}
+                    </code>
+                  </div>
+                  <details className="text-xs text-zinc-600 dark:text-zinc-400">
+                    <summary className="cursor-pointer font-medium">How do I get these? (one-time, ~10 min, free)</summary>
+                    <p className="mt-2 leading-relaxed">{DRIVE_SETUP_HELP}</p>
+                  </details>
+                </div>
+              </div>
               <Button type="submit" loading={saving} className="w-full">
-                <UserPlus className="h-4 w-4" aria-hidden /> Create team
+                <UserPlus className="h-4 w-4" aria-hidden /> Create team &amp; connect Drive
               </Button>
-              <p className="text-center text-xs text-zinc-500">Have an invite link instead? Open it and register there.</p>
+              <p className="text-center text-xs text-zinc-500">
+                Members never need a Google account for this — only you, once. Have an invite link instead? Open it and register there.
+              </p>
             </form>
           </Card>
         )}
@@ -108,6 +184,35 @@ export function TeamPage() {
   }
 
   const members = data?.members ?? [];
+  const drive = driveStatus ?? null;
+  const needsFolderLink = isAdmin && !!drive?.connected && !team.drive_folder_id;
+
+  const linkFolder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLinking(true);
+    try {
+      await api(`/api/teams/${team.team_id}/drive/folder`, { method: "POST", body: folderForm });
+      toast.push("success", "Drive folder linked — everything the team stores now lives there");
+      setFolderOpen(false);
+      setFolderForm({ drive_folder_url: "" });
+      await refresh();
+      void reload();
+      reloadDriveStatus();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Linking failed");
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const reconnectDrive = async () => {
+    try {
+      const result = await api<{ authorize_url: string }>(`/api/teams/${team.team_id}/drive/reconnect`, { method: "POST" });
+      window.location.href = result.authorize_url;
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Reconnect failed");
+    }
+  };
 
   const saveTeamEdit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -202,7 +307,7 @@ export function TeamPage() {
             <Button
               variant="secondary"
               onClick={() => {
-                setEditForm({ name: team.name, description: team.description, drive_folder_url: team.drive_folder_url ?? "" });
+                setEditForm({ name: team.name, description: team.description });
                 setEditOpen(true);
               }}
             >
@@ -212,35 +317,81 @@ export function TeamPage() {
         }
       />
 
-      {/* Team Drive folder */}
-      {team.drive_folder_id && (
+      {/* Google Drive connection — admins manage it, members just see the folder */}
+      {drive?.storage_mode === "drive" && (
         <Card className="mb-6">
           <CardHeader
-            title="Team Drive folder"
+            title="Google Drive"
             action={
               isAdmin && (
-                <Button variant="secondary" onClick={() => void shareFolder()}>
-                  <Share2 className="h-4 w-4" aria-hidden /> Share with all members
-                </Button>
+                <div className="flex gap-2">
+                  {drive.connected && (
+                    <Button variant="secondary" onClick={() => { setFolderForm({ drive_folder_url: team.drive_folder_url ?? "" }); setFolderOpen(true); }}>
+                      <FolderOpen className="h-4 w-4" aria-hidden /> {team.drive_folder_id ? "Change folder" : "Link folder"}
+                    </Button>
+                  )}
+                  {!drive.connected && drive.client_configured && (
+                    <Button variant="secondary" onClick={() => void reconnectDrive()}>
+                      <RefreshCw className="h-4 w-4" aria-hidden /> Reconnect Google
+                    </Button>
+                  )}
+                  {drive.connected && team.drive_folder_id && (
+                    <Button variant="secondary" onClick={() => void shareFolder()}>
+                      <Share2 className="h-4 w-4" aria-hidden /> Share with all members
+                    </Button>
+                  )}
+                </div>
               )
             }
           />
-          <div className="flex flex-wrap items-center gap-3 px-5 py-4">
-            <FolderOpen className="h-5 w-5 shrink-0 text-indigo-500" aria-hidden />
-            <div className="min-w-0 flex-1">
-              <a
-                href={team.drive_folder_url || `https://drive.google.com/drive/folders/${team.drive_folder_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
-              >
-                Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              </a>
-              <p className="text-xs text-zinc-500">
-                All team files — uploads, handover attachments, task deliverables and the app's data tables —
-                are stored in this shared folder. New members are granted access automatically when they join.
+          <div className="space-y-3 px-5 py-4">
+            {drive.connected ? (
+              <p className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <Check className="h-4 w-4 text-emerald-500" aria-hidden />
+                Connected to Google Drive{drive.account ? ` as ${drive.account}` : ""} — you approve this once; the team stays connected.
               </p>
-            </div>
+            ) : (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                {drive.client_configured
+                  ? "Google Drive is not connected yet — reconnect to store the team's files in your own Drive folder."
+                  : "This team was created without a Google Drive connection (legacy). Data is stored on the app server."}
+              </p>
+            )}
+
+            {team.drive_folder_id ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <FolderOpen className="h-5 w-5 shrink-0 text-indigo-500" aria-hidden />
+                <a
+                  href={team.drive_folder_url || `https://drive.google.com/drive/folders/${team.drive_folder_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                >
+                  Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                </a>
+              </div>
+            ) : needsFolderLink ? (
+              <form onSubmit={linkFolder} className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[260px] flex-1">
+                  <Field label="Team Drive folder">
+                    <Input
+                      required
+                      value={folderForm.drive_folder_url}
+                      onChange={(e) => setFolderForm({ drive_folder_url: e.target.value })}
+                      placeholder="https://drive.google.com/drive/folders/…"
+                    />
+                  </Field>
+                </div>
+                <Button type="submit" loading={linking}>
+                  <Link2 className="h-4 w-4" aria-hidden /> Link folder
+                </Button>
+              </form>
+            ) : null}
+
+            <p className="text-xs text-zinc-500">
+              Everything the team stores — uploads, completed work, handover files and the app's data —
+              lives in this folder{team.drive_folder_id ? "" : " once linked"}, and every member gets access automatically. Members never need a Google login.
+            </p>
           </div>
         </Card>
       )}
@@ -354,23 +505,38 @@ export function TeamPage() {
           <Field label="Description">
             <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
           </Field>
-          <Field label="Team Google Drive folder">
-            <Input
-              value={editForm.drive_folder_url}
-              onChange={(e) => setEditForm({ ...editForm, drive_folder_url: e.target.value })}
-              placeholder="https://drive.google.com/drive/folders/…"
-            />
-            <p className="mt-1.5 text-xs text-zinc-500">
-              Paste a Drive folder link to store all team files there (shared with every member). Clear the
-              field to unlink; files already uploaded stay where they are.
-            </p>
-          </Field>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
               Cancel
             </Button>
             <Button type="submit" loading={saving}>
               Save
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Link / change Drive folder modal */}
+      <Modal open={folderOpen} onClose={() => setFolderOpen(false)} title={team.drive_folder_id ? "Change Drive folder" : "Link Drive folder"}>
+        <form onSubmit={linkFolder} className="space-y-4">
+          <Field label="Google Drive folder link">
+            <Input
+              required
+              value={folderForm.drive_folder_url}
+              onChange={(e) => setFolderForm({ drive_folder_url: e.target.value })}
+              placeholder="https://drive.google.com/drive/folders/…"
+            />
+            <p className="mt-1.5 text-xs text-zinc-500">
+              Everything the team stores moves into this folder — existing data is migrated automatically
+              and every member is granted access. Paste a link to the folder in your own Drive.
+            </p>
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setFolderOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={linking}>
+              <Link2 className="h-4 w-4" aria-hidden /> {team.drive_folder_id ? "Change folder" : "Link folder"}
             </Button>
           </div>
         </form>

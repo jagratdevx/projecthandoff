@@ -90,12 +90,18 @@ async def register(payload: RegisterIn, db: DbDep, settings: SettingsDep) -> dic
     if team_id:
         await db.ensure_team(team_id)
         await _log_join(db, team_id, user)
+        from app.services.drive.google_drive import GoogleDriveBackend
+
         folder_id = team.get("drive_folder_id", "") if team else ""
         if folder_id:
             # The team's Drive folder is open to every member: grant this
-            # account writer access as soon as they join (best effort).
+            # account writer access as soon as they join (best effort, via
+            # the team's own connected Google account).
             try:
-                await db.backend.share_folder(folder_id, email)
+                if isinstance(db.backend, GoogleDriveBackend):
+                    await db.backend.team_share_folder(team_id, folder_id, email)
+                else:
+                    await db.backend.share_folder(folder_id, email)
             except DriveError as exc:
                 logger.warning(
                     "Could not share the team Drive folder with %s: %s", email, exc

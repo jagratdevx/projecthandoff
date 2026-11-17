@@ -97,7 +97,7 @@ async def list_attachments(user: CurrentUser, db: DbDep, task_id: str = "", proj
 async def download_attachment(attachment_id: str, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     attachment = await _get_attachment(db, user, attachment_id)
-    data = await db.backend.download_file(attachment["drive_file_id"])
+    data = await db.backend.download_file(attachment["drive_file_id"], team_id)
     from fastapi import Response
 
     return Response(
@@ -115,7 +115,7 @@ async def delete_attachment(attachment_id: str, user: CurrentUser, db: DbDep) ->
         raise HTTPException(status_code=403, detail="Only the uploader or team admins can delete this file")
 
     try:
-        await db.backend.delete_file(attachment["drive_file_id"])
+        await db.backend.delete_file(attachment["drive_file_id"], team_id)
     except Exception:
         pass  # drive file already gone; still remove the row
 

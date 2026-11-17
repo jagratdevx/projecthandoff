@@ -18,7 +18,7 @@ from app.services.drive.factory import create_drive_backend
 from app.services.drive.google_drive import GoogleDriveBackend
 from app.services.drive.local import LocalDriveBackend
 
-from fake_drive import FakeCreds, FakeDriveService, make_fake_http_error
+from fake_drive import FOLDER_MIME, FakeCreds, FakeDriveService, make_fake_http_error
 
 
 @pytest.fixture()
@@ -327,3 +327,41 @@ def test_team_status_reports_host_backed_teams_as_connected(drive_env):
     st2 = run(backend.team_status("team1"))
     assert st2["connected"] is True
     assert "via_host" not in st2
+
+
+def test_team_mapped_paths_resolve_into_anchor_folder(drive_env):
+    """Regression: a mapped team path '<anchorId>/AppData/x.csv' must resolve
+    INTO the anchor folder. The old resolver treated the leading anchor-ID
+    segment as a folder *name*, creating a duplicate '<anchorId>/AppData'
+    tree inside the team folder — reads and writes then silently hit the
+    empty duplicate while the real data sat in the correct location."""
+    backend, service, _ = drive_env
+    run(backend.ensure_root())
+    # Create a "team folder" and pin it as the team's Drive root.
+    club = service.state["files"]
+    club_id = run(backend._host.call(lambda svc: svc.files().create(
+        body={"name": "Club", "mimeType": FOLDER_MIME}, fields="id").execute()))["id"]
+    run(backend.set_team_root("team1", club_id))
+
+    # A team-scoped write must land in <club>/AppData/tasks.csv.
+    run(backend.write_file("TeamData/team1/tasks.csv", "task_id\nt1\n"))
+    content, _rev = run(backend.read_file("TeamData/team1/tasks.csv"))
+    assert "t1" in content
+
+    # The team folder must contain AppData — and NEVER a folder named after
+    # the anchor's own ID (the duplicate-tree bug).
+    kids = run(backend._host.call(lambda svc: svc.files().list(
+        q=f"'{club_id}' in parents and trashed=false",
+        fields="files(name,mimeType)", pageSize=50).execute()))
+    names = sorted(f["name"] for f in kids.get("files", []))
+    assert "AppData" in names
+    assert club_id not in names, f"self-named duplicate folder created: {names}"
+
+    # Same for project file paths.
+    run(backend.write_file("Projects/team1/p1/files/a.png", "png-bytes"))
+    kids2 = run(backend._host.call(lambda svc: svc.files().list(
+        q=f"'{club_id}' in parents and trashed=false",
+        fields="files(name)", pageSize=50).execute()))
+    names2 = sorted(f["name"] for f in kids2.get("files", []))
+    assert club_id not in names2
+    assert "Projects" in names2

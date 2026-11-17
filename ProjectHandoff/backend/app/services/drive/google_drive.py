@@ -391,6 +391,13 @@ class _GoogleSession:
         if not anchor:
             anchor = self._root_anchor_sync(svc)
         parts = [p for p in path.split("/") if p]
+        # Mapped team paths look like "<anchor-id>/AppData/tasks.csv". The
+        # leading segment IS the anchor folder itself — never a name to look
+        # up (or worse, create) beneath the anchor. Treating it as a name
+        # once built a duplicate "<anchor-id>/…" tree inside the team folder
+        # and silently orphaned the team's real data.
+        if parts and parts[0] == anchor:
+            parts = parts[1:]
         parent = anchor
         acc: list[str] = []
         for part in parts:

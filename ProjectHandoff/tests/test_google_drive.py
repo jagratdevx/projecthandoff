@@ -304,3 +304,26 @@ def test_factory_drive_mode_boots_without_host_token(tmp_path):
     backend = create_drive_backend(settings)
     assert isinstance(backend, GoogleDriveBackend)
     assert backend.token_file_exists() is False
+
+
+def test_team_status_reports_host_backed_teams_as_connected(drive_env):
+    """A team without its own token runs through the host account (legacy
+    deployments). team_status must report that real state instead of a
+    permanent 'not connected' that nags the owner to re-authorize forever."""
+    backend, _service, _token_file = drive_env
+    run(backend.ensure_root())
+    st = run(backend.team_status("team1"))
+    assert st["connected"] is True
+    assert st.get("via_host") is True
+    assert st["account"]
+
+    # Once the team connects its own Drive, the via_host marker disappears.
+    team_token = backend._team_token_dir("team1") / "token.json"
+    team_token.parent.mkdir(parents=True, exist_ok=True)
+    team_token.write_text(json.dumps({"token": "t", "refresh_token": "r"}))
+    session = backend._session_for_team("team1")
+    session._creds = FakeCreds()
+    session._token_mtime = team_token.stat().st_mtime
+    st2 = run(backend.team_status("team1"))
+    assert st2["connected"] is True
+    assert "via_host" not in st2

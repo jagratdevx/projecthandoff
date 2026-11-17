@@ -617,9 +617,17 @@ class GoogleDriveBackend(DriveBackend):
 
     async def team_status(self, team_id: str) -> dict:
         session = self._session_for_team(team_id)
-        if not session.token_file_exists():
-            return {"connected": False, "account": None}
-        return await session.status()
+        if session.token_file_exists():
+            return await session.status()
+        # No team token: legacy deployments (and teams that haven't upgraded)
+        # run through the HOST's Drive account — exactly what _route does for
+        # reads/writes. Report that real state instead of nagging "not
+        # connected" forever while the app actually works.
+        if self._host.token_file_exists():
+            st = await self._host.status()
+            if st.get("connected"):
+                return {**st, "via_host": True}
+        return {"connected": False, "account": None}
 
     async def _reload_team_roots(self) -> None:
         """Load team_id -> folder id from the global teams table (server-side)."""

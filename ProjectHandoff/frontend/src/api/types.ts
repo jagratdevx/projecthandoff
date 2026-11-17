@@ -31,6 +31,8 @@ export interface TeamDriveStatus {
   storage_mode: string;
   client_configured: boolean;
   connected: boolean;
+  /** True when the team runs on the organizer's (host) Drive account rather than its own OAuth connection. */
+  via_host?: boolean;
   account: string | null;
   folder: { id: string; url: string } | null;
 }

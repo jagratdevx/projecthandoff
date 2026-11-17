@@ -181,6 +181,11 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     payload = JSON.stringify(body);
   }
 
+  // Hard ceiling per request: anything slower aborts and surfaces as an
+  // error instead of hanging forever (a stalled socket must not wedge the
+  // whole screen).
+  const timeoutMs = 30000;
+
   // Background requests (polls, retries) wait for the connection slots the
   // user's live screen is not using. Queued requests don't count as inflight,
   // so the sync indicator stays quiet about them.
@@ -189,15 +194,29 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
 
   markInflightStart();
+  const startedAt = Date.now();
+  const slowWarn = window.setTimeout(() => {
+    console.warn(`[sync] request still pending after 8s: ${method} ${path}`);
+  }, 8000);
   let response: Response;
   let releaseUser: (() => void) | null = null;
   try {
     if (priority === "user") releaseUser = beginUserRequest();
-    response = await fetch(`${BASE_URL}${path}`, { method, headers, body: payload });
+    response = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers,
+      body: payload,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
   } catch {
+    if (Date.now() - startedAt >= timeoutMs) {
+      markError("The server took too long to respond");
+      throw new ApiError("The server took too long to respond. Try again.", 0);
+    }
     markError("Cannot reach the server — you appear to be offline");
     throw new ApiError("Cannot reach the server. Check your connection and try again.", 0);
   } finally {
+    window.clearTimeout(slowWarn);
     releaseUser?.();
     markInflightEnd();
   }

@@ -185,7 +185,8 @@ export function TeamPage() {
 
   const members = data?.members ?? [];
   const drive = driveStatus ?? null;
-  const needsFolderLink = isAdmin && !!drive?.connected && !team.drive_folder_id;
+  const needsFolderLink =
+    isAdmin && !!drive?.connected && !drive.via_host && !team.drive_folder_id;
 
   const linkFolder = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -348,7 +349,9 @@ export function TeamPage() {
             {drive.connected ? (
               <p className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                 <Check className="h-4 w-4 text-emerald-500" aria-hidden />
-                Connected to Google Drive{drive.account ? ` as ${drive.account}` : ""} — you approve this once; the team stays connected.
+                {drive.via_host
+                  ? `Running on the organizer's Google Drive${drive.account ? ` (${drive.account})` : ""} — everything syncs automatically. Optionally connect the team's own Drive below.`
+                  : `Connected to Google Drive${drive.account ? ` as ${drive.account}` : ""} — you approve this once; the team stays connected.`}
               </p>
             ) : (
               <p className="text-sm text-amber-600 dark:text-amber-400">

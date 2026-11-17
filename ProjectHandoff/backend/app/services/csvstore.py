@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import logging
 import time
 import uuid
 from datetime import datetime, timezone
@@ -192,7 +193,7 @@ class CsvStore:
     """
 
     MAX_RETRIES = 4
-    READ_CACHE_TTL = 8.0  # seconds a successful read stays valid in memory
+    READ_CACHE_TTL = 25.0  # seconds a successful read stays valid in memory
     READ_RETRIES = 2  # extra attempts for transient failures on read
 
     def __init__(self, backend: Any, backup_retention: int = 20, read_cache_ttl: float | None = None) -> None:
@@ -249,6 +250,42 @@ class CsvStore:
                     if not await self.backend.file_exists(path):
                         await self.backend.write_file(path, serialize_rows(table, []))
             await self.backend.ensure_folder(f"Backups/{team_id}/{table}")
+
+    # -- warming ----------------------------------------------------------------
+    async def warm_cache(self) -> int:
+        """Prefetch every table into the read cache (background startup job).
+
+        The first UI hit after a restart otherwise pays a serialized Drive
+        round-trip per screen; warming makes it instant. Best effort: failures
+        per table are logged and skipped, never raised — the app still works,
+        it just falls back to on-demand reads.
+        """
+        warmed = 0
+
+        async def warm(table: str, team_id: str) -> None:
+            nonlocal warmed
+            try:
+                await self.read(table, team_id, fresh=True)
+                warmed += 1
+            except Exception as exc:  # noqa: BLE001 — warming must never break startup
+                logging.getLogger("projecthandoff").warning(
+                    "Cache warm-up skipped %s%s: %s", table, f" ({team_id})" if team_id else "", exc
+                )
+
+        try:
+            for row in await self.query("teams"):
+                if row.get("status", "active") != "active":
+                    continue
+                team_id = row.get("team_id", "")
+                if team_id:
+                    await self.ensure_team(team_id)
+                    for table in sorted(TEAM_TABLES):
+                        await warm(table, team_id)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("projecthandoff").warning("Cache warm-up (teams) skipped: %s", exc)
+        for table in sorted(GLOBAL_TABLES):
+            await warm(table, "")
+        return warmed
 
     # -- reads ----------------------------------------------------------------
     async def read(self, table: str, team_id: str = "", fresh: bool = False) -> tuple[list[dict], str]:

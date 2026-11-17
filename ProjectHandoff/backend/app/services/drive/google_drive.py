@@ -207,6 +207,14 @@ class _GoogleSession:
             raise DriveTransientError(f"Network error talking to Google Drive: {exc}") from exc
 
     async def call(self, fn: Callable[[Any], Any]) -> Any:
+        """Run one Drive operation on this account's session.
+
+        Calls serialize through the session's I/O lock: the googleapiclient
+        service is not thread-safe and folder-creation must not race (two
+        concurrent ensures on a missing folder would create duplicates).
+        Cold-start latency is handled at a higher level: the store warms its
+        read cache at startup so pages never queue behind cold round-trips.
+        """
         async with self._io_lock:
             return await asyncio.to_thread(self._sync_call, fn)
 

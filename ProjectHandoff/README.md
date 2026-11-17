@@ -235,7 +235,7 @@ When you can't carry a task anymore (graduating, exams, switching teams):
 - A quiet **background poll every 10–15 s** keeps lists fresh while the tab is open (and pauses when the tab is hidden).
 - Requests for the screen you're currently on **take priority** over background syncing — page loads and your actions never wait behind a poll.
 - Failed syncs **retry themselves** with growing pauses (up to 30 s), so a Wi-Fi blip self-heals without you doing anything.
-- The sync indicator (bottom corner) is deliberately quiet: quick traffic shows nothing, a lingering sync shows *Syncing…*, a dragging one warns *Slow connection*, and real failures show the error. Backend reads are cached briefly, so navigating the app doesn't cost a Drive round-trip per click.
+- The sync indicator (bottom corner) is deliberately quiet: quick traffic shows nothing, a lingering sync shows *Syncing…*, a dragging one warns *Slow connection*, and real failures show the error. Backend reads are cached (per table, short TTL, refreshed instantly by writes), and after a restart the server warms the whole cache in the background — including refreshing its Google credentials — so the first person to open the app never waits for a cold Drive round-trip.
 
 ---
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -61,7 +62,33 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
                 )
         except Exception as exc:  # app still starts; endpoints report 5xx
             logger.error("Storage initialization failed: %s", exc)
+
+        # Warm the read cache + the Drive session in the background so the
+        # first page loads instantly after a restart instead of queueing an
+        # OAuth refresh plus a serialized Drive round-trip per table.
+        async def _warm() -> None:
+            backend = app.state.backend
+            from app.services.drive.google_drive import GoogleDriveBackend
+
+            if isinstance(backend, GoogleDriveBackend) and backend.token_file_exists():
+                try:
+                    # Force the credential refresh + service build now, once,
+                    # instead of inside the first user request (~11s freeze).
+                    await backend._host.call(lambda svc: svc.about().get(fields="user").execute())
+                    logger.info("Drive host session ready")
+                except Exception as exc:  # noqa: BLE001 — warming is best effort
+                    logger.warning("Drive warm-up skipped: %s", exc)
+            try:
+                count = await app.state.db.warm_cache()
+                logger.info("Read cache warmed (%s tables)", count)
+            except Exception as exc:  # noqa: BLE001 — warming is best effort
+                logger.warning("Read cache warm-up skipped: %s", exc)
+
+        warm_task = asyncio.create_task(_warm())
+
         yield
+
+        warm_task.cancel()
 
     app = FastAPI(
         title="ProjectHandoff API",

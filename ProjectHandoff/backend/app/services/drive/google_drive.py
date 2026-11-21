@@ -214,9 +214,23 @@ class _GoogleSession:
         concurrent ensures on a missing folder would create duplicates).
         Cold-start latency is handled at a higher level: the store warms its
         read cache at startup so pages never queue behind cold round-trips.
+
+        A hard deadline releases the lock even if a socket hangs below the
+        library's own timeout; otherwise one stalled request would wedge every
+        later read/write behind it.
         """
+        deadline = self.timeout_seconds + 5
         async with self._io_lock:
-            return await asyncio.to_thread(self._sync_call, fn)
+            try:
+                return await asyncio.wait_for(asyncio.to_thread(self._sync_call, fn), timeout=deadline)
+            except (asyncio.TimeoutError, TimeoutError) as exc:
+                # The worker thread may still be stuck in the old client. Drop
+                # the shared service so the next call builds a clean one; the
+                # abandoned thread keeps its own reference.
+                self._service = None
+                raise DriveTransientError(
+                    f"Google Drive did not respond within {deadline}s; retrying may fix it"
+                ) from exc
 
     # -- drive operations (one account's namespace) ----------------------------
 

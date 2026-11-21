@@ -183,8 +183,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
   // Hard ceiling per request: anything slower aborts and surfaces as an
   // error instead of hanging forever (a stalled socket must not wedge the
-  // whole screen).
-  const timeoutMs = 30000;
+  // whole screen). Reads get a tighter deadline so the sync indicator does
+  // not sit on "Slow connection" when the server is wedged; uploads/writes
+  // still get room for a slow Drive round-trip.
+  const timeoutMs = method === "GET" ? 12000 : 30000;
 
   // Background requests (polls, retries) wait for the connection slots the
   // user's live screen is not using. Queued requests don't count as inflight,

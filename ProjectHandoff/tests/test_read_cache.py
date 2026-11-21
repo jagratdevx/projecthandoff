@@ -64,14 +64,60 @@ def test_cache_expires_after_ttl(tmp_path):
     store = CsvStore(backend, read_cache_ttl=0.05)
     run(store.init())
 
-    run(store.read("users"))
-    run(store.read("users"))
-    assert backend.read_calls == 1
+    async def scenario():
+        await store.read("users")
+        await store.read("users")
+        assert backend.read_calls == 1
 
-    import time
-    time.sleep(0.08)  # let the TTL lapse
+        import time
+        time.sleep(0.08)  # let the TTL lapse
+        rows, _ = await store.read("users")  # stale rows return immediately
+        assert rows == []
+        await store.flush_refreshes()  # background refresh hits the backend
+        assert backend.read_calls == 2
+
+    run(scenario())
+
+
+def test_stale_cache_survives_read_failure(tmp_path):
+    class BrokenBackend(CountingBackend):
+        def __init__(self, root):
+            super().__init__(root)
+            self.broken = False
+
+        async def read_file(self, path):
+            if self.broken:
+                from app.services.drive.base import DriveTransientError
+                raise DriveTransientError("simulated outage")
+            return await super().read_file(path)
+
+    backend = BrokenBackend(tmp_path / "data")
+    store = CsvStore(backend, read_cache_ttl=0)
+    run(store.init())
     run(store.read("users"))
-    assert backend.read_calls == 2
+    backend.broken = True
+
+    # Expired cache + failing Drive still serves the last good snapshot.
+    rows = run(store.read("users"))
+    assert rows[0] == []
+    run(store.flush_refreshes())
+
+
+def test_persistent_cache_starts_warm(tmp_path):
+    cache_file = tmp_path / "read_cache.json"
+    first_backend = CountingBackend(tmp_path / "data")
+    first = CsvStore(first_backend, persistent_cache_path=cache_file)
+    run(first.init())
+    run(first.read("users"))
+    assert cache_file.is_file()
+
+    # A brand-new store + backend (i.e. a restart) serves from the disk cache
+    # without touching Drive on the first page load.
+    second_backend = CountingBackend(tmp_path / "data")
+    second = CsvStore(second_backend, persistent_cache_path=cache_file)
+    rows, _revision = run(second.read("users"))
+    assert rows == []
+    assert second_backend.read_calls == 0
 
 
 def test_transient_read_failure_is_retried(tmp_path):

@@ -3,10 +3,13 @@ from __future__ import annotations
 import asyncio
 import csv
 import io
+import json
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from app.services.drive.base import (
@@ -193,26 +196,155 @@ class CsvStore:
     """
 
     MAX_RETRIES = 4
-    READ_CACHE_TTL = 25.0  # seconds a successful read stays valid in memory
-    READ_RETRIES = 2  # extra attempts for transient failures on read
+    READ_CACHE_TTL = 60.0  # seconds before a cached table is refreshed in the background
+    READ_RETRIES = 1  # extra attempts for transient failures on read
+    _log = logging.getLogger("projecthandoff")
 
-    def __init__(self, backend: Any, backup_retention: int = 20, read_cache_ttl: float | None = None) -> None:
+    def __init__(
+        self,
+        backend: Any,
+        backup_retention: int = 20,
+        read_cache_ttl: float | None = None,
+        persistent_cache_path: str | os.PathLike[str] | None = None,
+    ) -> None:
         self.backend = backend
         self.backup_retention = backup_retention
         self.read_cache_ttl = self.READ_CACHE_TTL if read_cache_ttl is None else read_cache_ttl
         self._locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._locks_guard = asyncio.Lock()
         self._read_cache: dict[tuple[str, str], tuple[float, list[dict], str]] = {}
+        self._refreshing: dict[tuple[str, str], asyncio.Task] = {}
+        self._refresh_running = False
+        self._active_writes = 0
+        self._persistent_cache_path = Path(persistent_cache_path) if persistent_cache_path else None
+        self._load_persistent_cache()
 
     # -- read cache ------------------------------------------------------------
-    def _cache_get(self, key: tuple[str, str]) -> tuple[list[dict], str] | None:
+    #
+    # Two-layer design:
+    #   * memory: every successful read is cached; our own writes update it.
+    #   * disk:   the same entries are persisted so a restart starts warm. The
+    #             first paint is served from disk immediately, then the
+    #             background warm-up refreshes Drive in the background.
+    #
+    # Stale-while-revalidate: once an entry passes READ_CACHE_TTL we return it
+    # right away and refresh it in the background. A slow Drive (often 1–3 s
+    # per CSV here) can therefore never block a page load or a sync poll.
+
+    def _cache_get(self, key: tuple[str, str], *, allow_stale: bool = False) -> tuple[list[dict], str] | None:
         hit = self._read_cache.get(key)
-        if hit is not None and time.monotonic() - hit[0] < self.read_cache_ttl:
+        if hit is None:
+            return None
+        if time.monotonic() - hit[0] < self.read_cache_ttl:
+            return hit[1], hit[2]
+        if allow_stale:
+            self._schedule_refresh(key)
             return hit[1], hit[2]
         return None
 
     def _cache_put(self, key: tuple[str, str], rows: list[dict], revision: str) -> None:
         self._read_cache[key] = (time.monotonic(), rows, revision)
+        self._save_persistent_cache()
+
+    def _schedule_refresh(self, key: tuple[str, str]) -> None:
+        existing = self._refreshing.get(key)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(self._refresh(key))
+        self._refreshing[key] = task
+
+        def _done(t: asyncio.Task) -> None:
+            if self._refreshing.get(key) is t:
+                self._refreshing.pop(key, None)
+            if not t.cancelled() and t.exception() is not None:
+                # _refresh already logs; retrieving the exception prevents
+                # asyncio's "never retrieved" warning.
+                pass
+
+        task.add_done_callback(_done)
+
+    async def _refresh(self, key: tuple[str, str]) -> None:
+        team_id, table = key
+        # Never let a burst of background refreshes queue in front of a write.
+        # One refresh at a time, and none while a mutation is in flight.
+        if self._refresh_running or self._active_writes:
+            return
+        self._refresh_running = True
+        try:
+            if self._active_writes:
+                return
+            await self._read_backend(table, team_id)
+        except Exception as exc:  # noqa: BLE001 — stale data is better than a blank screen
+            self._log.warning(
+                "Background refresh failed for %s%s (serving cached rows): %s",
+                table, f" ({team_id})" if team_id else "", exc,
+            )
+        finally:
+            self._refresh_running = False
+
+    async def flush_refreshes(self) -> None:
+        """Wait for in-flight background refreshes (used by tests and shutdown)."""
+        tasks = [t for t in self._refreshing.values() if not t.done()]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    # -- persistent cache -------------------------------------------------------
+    def _load_persistent_cache(self) -> None:
+        if self._persistent_cache_path is None or not self._persistent_cache_path.is_file():
+            return
+        try:
+            data = json.loads(self._persistent_cache_path.read_text("utf-8"))
+            entries = data.get("entries", {})
+            if not isinstance(entries, dict):
+                return
+            for raw_key, entry in entries.items():
+                team_id, _, table = str(raw_key).partition("|")
+                if table not in SCHEMAS or not isinstance(entry, dict):
+                    continue
+                rows = entry.get("rows")
+                if not isinstance(rows, list):
+                    continue
+                try:
+                    _validate_ids(table, rows)
+                except (ValidationError, ConflictError):
+                    continue
+                # Preserve the snapshot's age so the first access serves it
+                # instantly but immediately schedules a background refresh if
+                # it is older than the TTL.
+                saved_at = float(entry.get("saved_at") or 0)
+                age = max(0.0, time.time() - saved_at) if saved_at else float("inf")
+                self._read_cache[(team_id, table)] = (
+                    time.monotonic() - age, rows, str(entry.get("revision", "")),
+                )
+            if self._read_cache:
+                self._log.info("Loaded %s cached tables from disk", len(self._read_cache))
+        except (OSError, ValueError, TypeError) as exc:
+            self._log.warning("Ignoring unreadable read cache: %s", exc)
+
+    def _save_persistent_cache(self) -> None:
+        if self._persistent_cache_path is None:
+            return
+        try:
+            now = time.time()
+            entries: dict[str, dict] = {}
+            for (team_id, table), (ts, rows, revision) in self._read_cache.items():
+                entries[f"{team_id}|{table}"] = {
+                    "revision": revision,
+                    "rows": rows,
+                    "saved_at": now - max(0.0, time.monotonic() - ts),
+                }
+            payload = json.dumps({"version": 1, "entries": entries}, separators=(",", ":"))
+            path = self._persistent_cache_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(payload, "utf-8")
+            os.replace(tmp, path)
+            try:
+                os.chmod(path, 0o600)
+            except OSError:
+                pass
+        except OSError as exc:
+            self._log.warning("Could not persist read cache: %s", exc)
 
     # -- paths ---------------------------------------------------------------
     def table_path(self, table: str, team_id: str = "") -> str:
@@ -236,13 +368,21 @@ class CsvStore:
     async def init(self) -> None:
         await self.backend.ensure_root()
         for table in sorted(GLOBAL_TABLES):
+            # A warm disk cache proves the table exists (and reads self-heal a
+            # file deleted externally), so skip a slow Drive stat per table on
+            # every restart.
+            if ("", table) in self._read_cache:
+                continue
             path = self.table_path(table)
             if not await self.backend.file_exists(path):
                 await self.backend.write_file(path, serialize_rows(table, []))
-        for table in sorted(TEAM_TABLES):
-            await self.backend.ensure_folder(f"Backups/global/{table}")
+        if not self._read_cache:
+            for table in sorted(TEAM_TABLES):
+                await self.backend.ensure_folder(f"Backups/global/{table}")
 
     async def ensure_team(self, team_id: str) -> None:
+        if all((team_id, table) in self._read_cache for table in TEAM_TABLES):
+            return
         for table in sorted(TEAM_TABLES):
             path = self.table_path(table, team_id)
             if not await self.backend.file_exists(path):
@@ -259,7 +399,18 @@ class CsvStore:
         round-trip per screen; warming makes it instant. Best effort: failures
         per table are logged and skipped, never raised — the app still works,
         it just falls back to on-demand reads.
+
+        When a disk snapshot was loaded, skip the bulk warm: every page is
+        already instant, and each table refreshes on demand in the background
+        as the user visits it. This avoids a multi-minute Drive storm at boot.
         """
+        if self._read_cache:
+            self._log.info(
+                "Read cache loaded from disk (%s tables) — refreshing on demand",
+                len(self._read_cache),
+            )
+            return len(self._read_cache)
+
         warmed = 0
 
         async def warm(table: str, team_id: str) -> None:
@@ -289,16 +440,35 @@ class CsvStore:
 
     # -- reads ----------------------------------------------------------------
     async def read(self, table: str, team_id: str = "", fresh: bool = False) -> tuple[list[dict], str]:
-        """Read a table; served from a short-TTL cache unless ``fresh``.
+        """Read a table, serving cached rows instantly whenever possible.
 
-        Transient backend failures are retried before surfacing to the caller.
+        ``fresh=True`` (mutations and the startup warm-up) waits for Drive.
+        Normal page loads and polls use stale-while-revalidate: stale rows are
+        returned immediately while a single background refresh updates them.
         """
         key = (team_id, table)
         if not fresh:
-            cached = self._cache_get(key)
+            cached = self._cache_get(key, allow_stale=True)
             if cached is not None:
                 return cached
+            try:
+                return await self._read_backend(table, team_id)
+            except (StoreError, DriveError) as exc:
+                # Cold cache + Drive trouble: if we have any snapshot at all,
+                # keep the app usable instead of blanking the screen.
+                hit = self._read_cache.get(key)
+                if hit is not None:
+                    self._log.warning(
+                        "Read failed for %s%s; serving cached rows: %s",
+                        table, f" ({team_id})" if team_id else "", exc,
+                    )
+                    return hit[1], hit[2]
+                raise
 
+        return await self._read_backend(table, team_id)
+
+    async def _read_backend(self, table: str, team_id: str) -> tuple[list[dict], str]:
+        key = (team_id, table)
         path = self.table_path(table, team_id)
         content = revision = None
         last_error: Exception | None = None
@@ -368,40 +538,44 @@ class CsvStore:
         """
         lock = await self._lock_for(team_id, table)
         key = (team_id, table)
-        async with lock:
-            path = self.table_path(table, team_id)
-            last_error: Exception | None = None
-            for attempt in range(self.MAX_RETRIES):
-                rows, revision = await self.read(table, team_id, fresh=True)
-                new_rows = fn(list(rows))  # business errors propagate untouched
-                _validate_ids(table, new_rows)
-                content = serialize_rows(table, new_rows)
-                try:
-                    new_revision = await self.backend.write_file(
-                        path, content, expected_revision=revision or None
-                    )
-                except StaleRevision as exc:
-                    last_error = exc
-                    self._read_cache.pop(key, None)  # external edit — refetch on retry
-                    continue
-                except DriveTransientError as exc:
-                    last_error = exc
-                    await asyncio.sleep(0.2 * (attempt + 1))
-                    continue
-                except DriveAuthError:
-                    raise  # not recoverable without user action
-                except DriveError as exc:
-                    last_error = exc
-                    await asyncio.sleep(0.2 * (attempt + 1))
-                    continue
-                # Success — snapshot the written content as a recovery point
-                # and refresh the read cache with what is now stored.
-                await self._backup(table, team_id, content)
-                self._cache_put(key, new_rows, new_revision)
-                return new_rows
-            raise StoreError(
-                f"Failed to write {table}.csv after {self.MAX_RETRIES} attempts: {last_error}"
-            )
+        self._active_writes += 1
+        try:
+            async with lock:
+                path = self.table_path(table, team_id)
+                last_error: Exception | None = None
+                for attempt in range(self.MAX_RETRIES):
+                    rows, revision = await self.read(table, team_id, fresh=True)
+                    new_rows = fn(list(rows))  # business errors propagate untouched
+                    _validate_ids(table, new_rows)
+                    content = serialize_rows(table, new_rows)
+                    try:
+                        new_revision = await self.backend.write_file(
+                            path, content, expected_revision=revision or None
+                        )
+                    except StaleRevision as exc:
+                        last_error = exc
+                        self._read_cache.pop(key, None)  # external edit — refetch on retry
+                        continue
+                    except DriveTransientError as exc:
+                        last_error = exc
+                        await asyncio.sleep(0.2 * (attempt + 1))
+                        continue
+                    except DriveAuthError:
+                        raise  # not recoverable without user action
+                    except DriveError as exc:
+                        last_error = exc
+                        await asyncio.sleep(0.2 * (attempt + 1))
+                        continue
+                    # Success — snapshot the written content as a recovery point
+                    # and refresh the read cache with what is now stored.
+                    await self._backup(table, team_id, content)
+                    self._cache_put(key, new_rows, new_revision)
+                    return new_rows
+                raise StoreError(
+                    f"Failed to write {table}.csv after {self.MAX_RETRIES} attempts: {last_error}"
+                )
+        finally:
+            self._active_writes -= 1
 
     async def _backup(self, table: str, team_id: str, current_content: str) -> None:
         scope = team_id or "global"

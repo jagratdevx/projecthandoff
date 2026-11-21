@@ -18,7 +18,7 @@ import { formatDate, timeAgo } from "../lib/format";
 
 export function Dashboard() {
   const { user, team } = useAuth();
-  const { data, loading, error } = useResource<DashboardData>(() => api("/api/dashboard"), [], 15000);
+  const { data, loading, error, reload } = useResource<DashboardData>(() => api("/api/dashboard"), [], 15000);
 
   if (!team) {
     return (
@@ -50,8 +50,18 @@ export function Dashboard() {
     );
   }
 
-  if (error || !data) {
-    return <p className="text-sm text-red-600 dark:text-red-400">{error ?? "Failed to load dashboard"}</p>;
+  if (!data) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-red-600 dark:text-red-400">{error ?? "Failed to load dashboard"}</p>
+        <button
+          onClick={() => void reload()}
+          className="inline-flex items-center rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          Try again
+        </button>
+      </div>
+    );
   }
 
   const { stats } = data;
@@ -71,6 +81,15 @@ export function Dashboard() {
         subtitle={`${team.name} · ${stats.team_size} member${stats.team_size === 1 ? "" : "s"}`}
         actions={undefined}
       />
+
+      {error && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>Showing the last loaded data — {error}</span>
+          <button onClick={() => void reload()} className="font-medium underline underline-offset-2 hover:no-underline">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">

@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import Settings
+from app.config import PROJECT_ROOT, Settings
 from app.routers import (
     activity as activity_router,
     attachments as attachments_router,
@@ -42,7 +42,11 @@ def _error(status: int, detail: str) -> JSONResponse:
     return JSONResponse(status_code=status, content={"detail": detail})
 
 
-def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
+def create_app(settings: Settings | None = None, backend=None, persistent_cache_path=None) -> FastAPI:
+    # Only the real, module-level app (uvicorn --factory) opts into the disk
+    # read cache; tests and callers passing an explicit settings/backend stay
+    # isolated and never read a developer's cached production data.
+    use_default_cache = settings is None and backend is None
     settings = settings or Settings()
     # First-run wizard: restore client credentials entered through the UI.
     from app.routers.setup import load_stored_client
@@ -100,7 +104,13 @@ def create_app(settings: Settings | None = None, backend=None) -> FastAPI:
 
     if backend is None:
         backend = create_drive_backend(settings)
-    db = CsvStore(backend, backup_retention=settings.backup_retention)
+    if persistent_cache_path is None and use_default_cache and getattr(backend, "mode", "") == "drive":
+        persistent_cache_path = PROJECT_ROOT / ".cache" / "read_cache.json"
+    db = CsvStore(
+        backend,
+        backup_retention=settings.backup_retention,
+        persistent_cache_path=persistent_cache_path,
+    )
     app.state.settings = settings
     app.state.backend = backend
     app.state.db = db

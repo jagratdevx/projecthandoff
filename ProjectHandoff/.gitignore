@@ -21,6 +21,9 @@ client_secret*.json
 credentials*.json
 !google-client-secret.example.json
 
+# Persisted read cache (local performance snapshot, safe to delete)
+.cache/
+
 # Local development storage (explicitly non-production mode)
 backend/data/
 data/

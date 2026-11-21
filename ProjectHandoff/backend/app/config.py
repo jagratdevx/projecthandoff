@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     drive_root_folder_id: str = ""
     drive_root_folder_name: str = "ProjectHandoff"
     # Hard ceiling for one Drive HTTP call — a stalled connection must never
-    # hold the backend's I/O queue (and the whole app) hostage.
-    drive_timeout_seconds: int = 30
+    # hold the backend's I/O queue (and the whole app) hostage. Normal calls
+    # here take 0.5–3 s, so 15 s is already very generous.
+    drive_timeout_seconds: int = 15
 
     # Uploads
     max_upload_mb: int = 10

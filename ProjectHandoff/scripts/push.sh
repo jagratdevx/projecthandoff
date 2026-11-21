@@ -5,8 +5,7 @@
 #   scripts/push.sh "commit message"
 #
 # Notes:
-# - Never touches other projects in this repo (e.g. devpulse/) or the
-#   untracked scratch files at the repository root.
+# - Never touches the untracked scratch files at the repository root.
 # - Refuses to run if there is nothing staged to commit.
 # - Never force-pushes; verifies the remote ref after pushing.
 

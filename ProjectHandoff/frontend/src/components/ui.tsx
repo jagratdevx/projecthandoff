@@ -24,7 +24,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({ variant = "primary", loading, className = "", children, disabled, ...rest }: ButtonProps) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 ${BUTTON_VARIANTS[variant]} ${className}`}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-0 ${BUTTON_VARIANTS[variant]} ${className}`}
       disabled={disabled || loading}
       {...rest}
     >
@@ -66,9 +66,9 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 
 export function CardHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
-    <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3.5 dark:border-zinc-800">
-      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
-      {action}
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-5 py-3.5 dark:border-zinc-800">
+      <h2 className="min-w-0 text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
+      {action && <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">{action}</div>}
     </div>
   );
 }
@@ -115,7 +115,7 @@ const STATUS_STYLES: Record<string, string> = {
 export function Badge({ value, className = "" }: { value: string; className?: string }) {
   const style = STATUS_STYLES[value] ?? "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300";
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${style} ${className}`}>
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${style} ${className}`}>
       {value.replace(/_/g, " ")}
     </span>
   );
@@ -178,7 +178,7 @@ export function Modal({
           <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="rounded-md p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
             aria-label="Close dialog"
           >
             <X className="h-4 w-4" aria-hidden />

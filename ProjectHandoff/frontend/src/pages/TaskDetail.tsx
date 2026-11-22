@@ -449,7 +449,7 @@ export function TaskDetail() {
           <Field label="Next recommended actions">
             <Textarea value={handoverForm.next_actions} onChange={(e) => setHandoverForm({ ...handoverForm, next_actions: e.target.value })} placeholder="1. Swap controller 2. Re-run diagnostics…" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Relevant files" hint="File names or links, comma separated.">
               <Input value={handoverForm.relevant_files} onChange={(e) => setHandoverForm({ ...handoverForm, relevant_files: e.target.value })} placeholder="wiring-diagram.pdf" />
             </Field>

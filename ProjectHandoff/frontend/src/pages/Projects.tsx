@@ -104,7 +104,7 @@ export function Projects() {
           <button
             key={status}
             onClick={() => setStatusFilter(status)}
-            className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
               statusFilter === status
                 ? "bg-indigo-600 text-white"
                 : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
@@ -117,7 +117,7 @@ export function Projects() {
           placeholder="Search projects…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="ml-auto max-w-xs"
+          className="w-full sm:ml-auto sm:max-w-xs"
           aria-label="Search projects"
         />
       </div>
@@ -145,20 +145,20 @@ export function Projects() {
             const progress = progressByProject.get(project.project_id) ?? { total: 0, completed: 0 };
             const overdue = isOverdue(project.deadline, project.status);
             return (
-              <Link key={project.project_id} to={`/projects/${project.project_id}`} className="card-base block p-5 transition hover:border-indigo-300 dark:hover:border-indigo-700">
+              <Link key={project.project_id} to={`/projects/${project.project_id}`} className="card-base block min-w-0 p-5 transition hover:border-indigo-300 dark:hover:border-indigo-700">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-zinc-900 dark:text-zinc-50">{project.name}</p>
+                    <p className="line-clamp-2 break-words font-medium text-zinc-900 dark:text-zinc-50">{project.name}</p>
                     <p className="mt-0.5 line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
                       {project.description || "No description"}
                     </p>
                   </div>
-                  <Badge value={project.status} />
+                  <Badge value={project.status} className="shrink-0" />
                 </div>
-                <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
-                  <Badge value={project.priority} />
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                  <Badge value={project.priority} className="shrink-0" />
                   <span>·</span>
-                  <span className={overdue ? "font-medium text-red-600 dark:text-red-400" : ""}>
+                  <span className={`min-w-0 ${overdue ? "font-medium text-red-600 dark:text-red-400" : ""}`}>
                     {project.deadline ? (overdue ? `Overdue (was due ${formatDate(project.deadline)})` : `Due ${formatDate(project.deadline)}`) : "No deadline"}
                   </span>
                 </div>
@@ -178,7 +178,7 @@ export function Projects() {
           <Field label="Description">
             <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What is this project about?" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Start date">
               <Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
             </Field>
@@ -186,7 +186,7 @@ export function Projects() {
               <Input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Priority">
               <Select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
                 {["Low", "Medium", "High", "Critical"].map((p) => (

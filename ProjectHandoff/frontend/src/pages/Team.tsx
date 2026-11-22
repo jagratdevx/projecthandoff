@@ -44,7 +44,7 @@ export function TeamPage() {
     0,
   );
 
-  const { data: driveStatus, reload: reloadDriveStatus } = useResource<TeamDriveStatus>(
+  const { data: driveStatus, loading: driveLoading, reload: reloadDriveStatus } = useResource<TeamDriveStatus>(
     () => (team ? api(`/api/teams/${team.team_id}/drive/status`) : Promise.resolve({
       storage_mode: "local", client_configured: false, connected: false, account: null, folder: null,
     })),
@@ -319,25 +319,33 @@ export function TeamPage() {
       />
 
       {/* Google Drive connection — admins manage it, members just see the folder */}
+      {driveLoading && !driveStatus && (
+        <Card className="mb-6">
+          <CardHeader title="Google Drive" />
+          <div className="p-5">
+            <SkeletonList rows={2} />
+          </div>
+        </Card>
+      )}
       {drive?.storage_mode === "drive" && (
         <Card className="mb-6">
           <CardHeader
             title="Google Drive"
             action={
               isAdmin && (
-                <div className="flex gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   {drive.connected && (
-                    <Button variant="secondary" onClick={() => { setFolderForm({ drive_folder_url: team.drive_folder_url ?? "" }); setFolderOpen(true); }}>
+                    <Button variant="secondary" className="w-full sm:w-auto" onClick={() => { setFolderForm({ drive_folder_url: team.drive_folder_url ?? "" }); setFolderOpen(true); }}>
                       <FolderOpen className="h-4 w-4" aria-hidden /> {team.drive_folder_id ? "Change folder" : "Link folder"}
                     </Button>
                   )}
                   {!drive.connected && drive.client_configured && (
-                    <Button variant="secondary" onClick={() => void reconnectDrive()}>
+                    <Button variant="secondary" className="w-full sm:w-auto" onClick={() => void reconnectDrive()}>
                       <RefreshCw className="h-4 w-4" aria-hidden /> Reconnect Google
                     </Button>
                   )}
                   {drive.connected && team.drive_folder_id && (
-                    <Button variant="secondary" onClick={() => void shareFolder()}>
+                    <Button variant="secondary" className="w-full sm:w-auto" onClick={() => void shareFolder()}>
                       <Share2 className="h-4 w-4" aria-hidden /> Share with all members
                     </Button>
                   )}
@@ -347,8 +355,8 @@ export function TeamPage() {
           />
           <div className="space-y-3 px-5 py-4">
             {drive.connected ? (
-              <p className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
-                <Check className="h-4 w-4 text-emerald-500" aria-hidden />
+              <p className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
                 {drive.via_host
                   ? `Running on the organizer's Google Drive${drive.account ? ` (${drive.account})` : ""} — everything syncs automatically. Optionally connect the team's own Drive below.`
                   : `Connected to Google Drive${drive.account ? ` as ${drive.account}` : ""} — you approve this once; the team stays connected.`}
@@ -368,14 +376,14 @@ export function TeamPage() {
                   href={team.drive_folder_url || `https://drive.google.com/drive/folders/${team.drive_folder_id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 truncate text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                  className="inline-flex min-w-0 items-center gap-1.5 break-words text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
                 >
-                  Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                  Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 </a>
               </div>
             ) : needsFolderLink ? (
               <form onSubmit={linkFolder} className="flex flex-wrap items-end gap-3">
-                <div className="min-w-[260px] flex-1">
+                <div className="min-w-0 flex-1">
                   <Field label="Team Drive folder">
                     <Input
                       required
@@ -419,7 +427,7 @@ export function TeamPage() {
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                   {member.name} {member.user_id === user?.user_id && <span className="text-xs text-zinc-400">(you)</span>}
                 </p>
-                <p className="truncate text-xs text-zinc-500">{member.email} · joined {formatDate(member.joined_at)}</p>
+                <p className="break-words text-xs text-zinc-500">{member.email} · joined {formatDate(member.joined_at)}</p>
               </div>
               <div className="flex items-center gap-2">
                 {isAdmin && member.role !== "owner" ? (
@@ -434,7 +442,7 @@ export function TeamPage() {
                   <Badge value={member.role} />
                 )}
                 {isAdmin && member.role !== "owner" && (
-                  <Button variant="ghost" className="p-1" onClick={() => setRemoveConfirm(member)} aria-label={`Remove ${member.name}`}>
+                  <Button variant="ghost" className="p-2" onClick={() => setRemoveConfirm(member)} aria-label={`Remove ${member.name}`}>
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </Button>
                 )}
@@ -456,10 +464,11 @@ export function TeamPage() {
             }
           />
           {lastInvite && lastInvite.invite_url && (
-            <div className="mx-5 mt-4 flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 dark:border-indigo-800 dark:bg-indigo-950/60">
-              <p className="flex-1 truncate text-sm text-indigo-900 dark:text-indigo-200">{lastInvite.invite_url}</p>
+            <div className="mx-5 mt-4 flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 dark:border-indigo-800 dark:bg-indigo-950/60 sm:flex-row sm:items-center">
+              <p className="min-w-0 flex-1 break-all text-sm text-indigo-900 dark:text-indigo-200">{lastInvite.invite_url}</p>
               <Button
                 variant="secondary"
+                className="w-full sm:w-auto"
                 onClick={() => {
                   void navigator.clipboard.writeText(lastInvite.invite_url!);
                   setCopied(true);
@@ -480,7 +489,7 @@ export function TeamPage() {
             {(invitations ?? []).map((invitation) => (
               <div key={invitation.invitation_id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
                 <div className="min-w-0">
-                  <p className="truncate text-sm text-zinc-900 dark:text-zinc-100">{invitation.email}</p>
+                  <p className="break-words text-sm text-zinc-900 dark:text-zinc-100">{invitation.email}</p>
                   <p className="text-xs text-zinc-500">
                     {invitation.role} · expires {formatDate(invitation.expires_at)}
                   </p>

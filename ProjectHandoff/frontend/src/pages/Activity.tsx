@@ -55,7 +55,7 @@ export function ActivityPage() {
             <div key={entry.activity_id} className="flex items-start gap-3 px-5 py-3.5">
               <span className="mt-1">{iconFor(entry.action)}</span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                <p className="break-words text-sm text-zinc-700 [overflow-wrap:anywhere] dark:text-zinc-300">
                   {entry.task_id ? (
                     <Link to={`/tasks/${entry.task_id}`} className="hover:underline">
                       {entry.description}
@@ -64,7 +64,7 @@ export function ActivityPage() {
                     entry.description
                   )}
                 </p>
-                <p className="mt-0.5 flex items-center gap-2 text-xs text-zinc-400">
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                   <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono dark:bg-zinc-800">{entry.action}</code>
                   <span>{timeAgo(entry.timestamp)}</span>
                 </p>

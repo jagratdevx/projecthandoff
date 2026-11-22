@@ -295,7 +295,7 @@ export function EventDetail() {
           <Field label="Description">
             <Textarea value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Department">
               <Select value={taskForm.department_id} onChange={(e) => setTaskForm({ ...taskForm, department_id: e.target.value })}>
                 <option value="">Whole event</option>
@@ -317,7 +317,7 @@ export function EventDetail() {
               </Select>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Deadline">
               <Input type="date" value={taskForm.deadline} onChange={(e) => setTaskForm({ ...taskForm, deadline: e.target.value })} />
             </Field>

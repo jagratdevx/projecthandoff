@@ -113,7 +113,7 @@ export function Tasks() {
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                 statusFilter === status
                   ? "bg-indigo-600 text-white"
                   : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
@@ -127,7 +127,7 @@ export function Tasks() {
           <Select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="max-w-[200px]"
+            className="w-full sm:w-auto sm:max-w-[200px]"
             aria-label="Filter by assignee"
           >
             <option value="">Everyone</option>
@@ -143,7 +143,7 @@ export function Tasks() {
           <Select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
-            className="max-w-[220px]"
+            className="w-full sm:w-auto sm:max-w-[220px]"
             aria-label="Filter by project"
           >
             <option value="">All projects</option>
@@ -157,7 +157,7 @@ export function Tasks() {
             placeholder="Search tasks…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="ml-auto max-w-xs"
+            className="w-full sm:ml-auto sm:max-w-xs"
             aria-label="Search tasks"
           />
         </div>
@@ -213,7 +213,7 @@ export function Tasks() {
           <Field label="Description">
             <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Project">
               <Select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })}>
                 <option value="">None</option>
@@ -235,7 +235,7 @@ export function Tasks() {
               </Select>
             </Field>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Deadline">
               <Input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} />
             </Field>

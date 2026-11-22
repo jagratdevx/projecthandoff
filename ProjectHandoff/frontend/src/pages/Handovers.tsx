@@ -61,7 +61,7 @@ export function Handovers() {
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`rounded-full px-3 py-1 text-xs font-medium capitalize transition ${
+              className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
                 statusFilter === status
                   ? "bg-indigo-600 text-white"
                   : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
@@ -74,7 +74,7 @@ export function Handovers() {
             placeholder="Search handovers…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="ml-auto max-w-xs"
+            className="w-full sm:ml-auto sm:max-w-xs"
             aria-label="Search handovers"
           />
         </div>
@@ -106,11 +106,11 @@ export function Handovers() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{handover.task_title || "Task handover"}</span>
-                  <Badge value={handover.status} />
+                  <Badge value={handover.status} className="shrink-0" />
                 </div>
                 <span className="text-xs text-zinc-400">sent {timeAgo(handover.created_at)}</span>
               </div>
-              <div className="mt-1.5 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
                 <span className="font-medium">{handover.previous_owner_name}</span>
                 <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
                 <span className="font-medium">{handover.proposed_owner_name}</span>

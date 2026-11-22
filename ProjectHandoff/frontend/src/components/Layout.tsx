@@ -78,7 +78,7 @@ export function Layout() {
           <p className="text-[11px] leading-tight text-zinc-500">{team?.name ?? "No team yet"}</p>
         </div>
       </div>
-      <nav className="flex-1 space-y-1 px-3" aria-label="Main navigation">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3" aria-label="Main navigation">
         {NAV_ITEMS.map(({ to, label, icon: Icon, badge }) => (
           <NavLink
             key={to}
@@ -130,12 +130,17 @@ export function Layout() {
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div id="mobile-nav" className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-zinc-950/50" onClick={() => setSidebarOpen(false)} aria-hidden />
-          <aside className="absolute left-0 top-0 h-full w-60 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            className="absolute left-0 top-0 h-full w-60 max-w-[85vw] border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+          >
             <button
               onClick={() => setSidebarOpen(false)}
-              className="absolute right-3 top-4 rounded-md p-1 text-zinc-500"
+              className="absolute right-2 top-2 rounded-md p-2 text-zinc-500"
               aria-label="Close navigation"
             >
               <X className="h-4 w-4" aria-hidden />
@@ -149,8 +154,10 @@ export function Layout() {
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/90 sm:px-6">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 lg:hidden"
+            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 lg:hidden"
             aria-label="Open navigation"
+            aria-expanded={sidebarOpen}
+            aria-controls="mobile-nav"
           >
             <Menu className="h-5 w-5" aria-hidden />
           </button>
@@ -158,7 +165,7 @@ export function Layout() {
           <SyncIndicator />
           <button
             onClick={toggle}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="rounded-md p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
             title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
             aria-label="Toggle color theme"
           >

@@ -94,7 +94,7 @@ export function Settings() {
       <Card className="mb-6">
         <CardHeader title="Profile" />
         <form onSubmit={saveName} className="space-y-4 p-5">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Display name">
               <Input required value={name} onChange={(e) => setName(e.target.value)} />
             </Field>
@@ -117,7 +117,7 @@ export function Settings() {
       <Card className="mb-6">
         <CardHeader title="Password" />
         <form onSubmit={changePassword} className="space-y-4 p-5">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Current password">
               <Input type="password" required autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
             </Field>
@@ -136,15 +136,15 @@ export function Settings() {
       {/* Appearance */}
       <Card className="mb-6">
         <CardHeader title="Appearance" />
-        <div className="flex items-center justify-between p-5">
+        <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <Monitor className="h-4 w-4 text-zinc-400" aria-hidden />
+            <Monitor className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
             <div>
               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Theme</p>
               <p className="text-xs text-zinc-500">Currently using {theme} mode.</p>
             </div>
           </div>
-          <Button variant="secondary" onClick={toggle}>
+          <Button variant="secondary" onClick={toggle} className="w-full sm:w-auto">
             Switch to {theme === "dark" ? "light" : "dark"}
           </Button>
         </div>
@@ -158,14 +158,14 @@ export function Settings() {
             <p className="text-sm text-zinc-500">Checking storage status…</p>
           ) : (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  {isDriveMode ? <Cloud className="h-4 w-4 text-zinc-400" aria-hidden /> : <HardDrive className="h-4 w-4 text-zinc-400" aria-hidden />}
-                  <div>
+              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  {isDriveMode ? <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden /> : <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden />}
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                       {isDriveMode ? "Google Drive (organizer account)" : "Local development storage"}
                     </p>
-                    <p className="text-xs text-zinc-500">{drive?.message ?? "All structured data lives in CSV files in Drive; uploads are stored there too."}</p>
+                    <p className="break-words text-xs text-zinc-500">{drive?.message ?? "All structured data lives in CSV files in Drive; uploads are stored there too."}</p>
                   </div>
                 </div>
                 {isDriveMode && (
@@ -191,17 +191,17 @@ export function Settings() {
               )}
 
               {isDriveMode && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 px-3.5 py-3 dark:border-zinc-800">
-                  <div className="text-sm">
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-zinc-200 px-3.5 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 text-sm">
                     <p className="font-medium text-zinc-900 dark:text-zinc-100">
                       Drive authorization: {drive?.authorized ? "connected" : "not connected"}
                     </p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="break-words text-xs text-zinc-500">
                       {drive?.authorized ? `Authorized as ${drive.account ?? "organizer"}` : "The organizer must authorize once; all team members share this connection."}
                     </p>
                   </div>
                   {!drive?.authorized && (
-                    <Button onClick={() => void authorizeDrive()} loading={authorizing}>
+                    <Button onClick={() => void authorizeDrive()} loading={authorizing} className="w-full sm:w-auto">
                       <RefreshCw className="h-4 w-4" aria-hidden /> Authorize Google Drive
                     </Button>
                   )}
@@ -219,12 +219,12 @@ export function Settings() {
       {/* Session */}
       <Card>
         <CardHeader title="Session" />
-        <div className="flex items-center justify-between p-5">
-          <div>
-            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Signed in as {user?.email}</p>
+        <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">Signed in as {user?.email}</p>
             <p className="text-xs text-zinc-500">Last synchronized with the server at {formatTime(Date.now())}</p>
           </div>
-          <Button variant="secondary" onClick={() => { window.location.href = "/login"; }}>
+          <Button variant="secondary" onClick={() => { window.location.href = "/login"; }} className="w-full sm:w-auto">
             <LogOut className="h-4 w-4" aria-hidden /> Sign out of this browser
           </Button>
         </div>

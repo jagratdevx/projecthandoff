@@ -312,7 +312,7 @@ export function ProjectDetail() {
           <Field label="Description">
             <Textarea value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Deadline">
               <Input type="date" value={editForm.deadline} onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })} />
             </Field>
@@ -324,7 +324,7 @@ export function ProjectDetail() {
               </Select>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Status">
               <Select value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}>
                 {["Planning", "Active", "On Hold", "Completed", "Archived"].map((s) => (
@@ -362,7 +362,7 @@ export function ProjectDetail() {
           <Field label="Description">
             <Textarea value={taskForm.description} onChange={(e) => setTaskForm({ ...taskForm, description: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Assignee">
               <Select value={taskForm.assigned_to} onChange={(e) => setTaskForm({ ...taskForm, assigned_to: e.target.value })}>
                 <option value="">Unassigned</option>

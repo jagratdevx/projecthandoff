@@ -131,7 +131,7 @@ export function EventDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate("/events")} className="mb-3 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+      <button onClick={() => navigate("/events")} className="mb-3 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
         ← Back to events
       </button>
 
@@ -143,22 +143,22 @@ export function EventDetail() {
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Dates</p>
+          <p className="text-xs text-stone-500">Dates</p>
           <p className="mt-1 text-sm font-medium">
             {event.start_date ? formatDate(event.start_date) : "TBD"}
             {event.end_date ? ` → ${formatDate(event.end_date)}` : ""}
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Owner</p>
+          <p className="text-xs text-stone-500">Owner</p>
           <p className="mt-1 text-sm font-medium">{nameOf(event.owner_id)}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Departments</p>
+          <p className="text-xs text-stone-500">Departments</p>
           <p className="mt-1 text-sm font-medium">{departments.filter((d) => d.status === "Active").length}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Overall progress</p>
+          <p className="text-xs text-stone-500">Overall progress</p>
           <ProgressBar completed={progress.completed} total={progress.total} className="mt-2.5" />
         </Card>
       </div>
@@ -173,9 +173,9 @@ export function EventDetail() {
             </Button>
           }
         />
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div className="divide-y divide-stone-100 dark:divide-stone-800">
           {departments.length === 0 && (
-            <p className="px-5 py-6 text-sm text-zinc-500">
+            <p className="px-5 py-6 text-sm text-stone-500">
               No departments yet. Split the event into logistics, sponsors, tech and other areas.
             </p>
           )}
@@ -183,8 +183,8 @@ export function EventDetail() {
             <div key={department.department_id} className="px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{department.name}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-sm font-medium text-stone-900 dark:text-stone-100">{department.name}</p>
+                  <p className="text-xs text-stone-500">
                     Coordinator: {department.coordinator_name || "—"} · {(department.member_ids ?? []).length} members
                   </p>
                 </div>
@@ -227,15 +227,15 @@ export function EventDetail() {
             </Button>
           }
         />
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {tasks.length === 0 && <p className="px-5 py-6 text-sm text-zinc-500">No tasks for this event yet.</p>}
+        <div className="divide-y divide-stone-100 dark:divide-stone-800">
+          {tasks.length === 0 && <p className="px-5 py-6 text-sm text-stone-500">No tasks for this event yet.</p>}
           {tasks.map((task) => {
             const department = departments.find((d) => d.department_id === task.department_id);
             return (
               <div key={task.task_id} className="flex items-center justify-between gap-3 px-5 py-3">
                 <Link to={`/tasks/${task.task_id}`} className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-900 hover:underline dark:text-zinc-100">{task.title}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="truncate text-sm font-medium text-stone-900 hover:underline dark:text-stone-100">{task.title}</p>
+                  <p className="text-xs text-stone-500">
                     {department ? `${department.name} · ` : ""}
                     {task.assigned_to ? nameOf(task.assigned_to) : "Unassigned"}
                     {task.deadline ? ` · due ${formatDate(task.deadline)}` : ""}
@@ -345,10 +345,10 @@ export function EventDetail() {
         <div className="space-y-4">
           <div className="space-y-1.5">
             {(memberModal?.member_ids ?? []).length === 0 && (
-              <p className="text-sm text-zinc-500">No members assigned to this department yet.</p>
+              <p className="text-sm text-stone-500">No members assigned to this department yet.</p>
             )}
             {(memberModal?.member_ids ?? []).map((memberId) => (
-              <div key={memberId} className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+              <div key={memberId} className="flex items-center justify-between rounded-lg border border-stone-200 px-3 py-2 dark:border-stone-800">
                 <span className="text-sm">{nameOf(memberId)}</span>
                 <Button variant="ghost" className="p-1" onClick={() => memberModal && void removeDeptMember(memberModal, memberId)} aria-label={`Remove ${nameOf(memberId)}`}>
                   <Trash2 className="h-3.5 w-3.5" aria-hidden />

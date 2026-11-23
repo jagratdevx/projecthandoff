@@ -26,7 +26,7 @@ const ICONS: Record<ToastKind, typeof Info> = {
 const STYLES: Record<ToastKind, string> = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100",
   error: "border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-100",
-  info: "border-indigo-200 bg-indigo-50 text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-100",
+  info: "border-brand-200 bg-brand-50 text-brand-900 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-100",
   warning: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100",
 };
 
@@ -57,7 +57,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={toast.id}
-              className={`pointer-events-auto flex items-start gap-2.5 rounded-lg border px-3.5 py-3 shadow-md ${STYLES[toast.kind]}`}
+              className={`pointer-events-auto flex items-start gap-2.5 rounded-xl border px-3.5 py-3 shadow-card-hover ${STYLES[toast.kind]}`}
             >
               <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <p className="flex-1 text-sm">{toast.message}</p>

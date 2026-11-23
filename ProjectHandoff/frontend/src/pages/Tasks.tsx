@@ -115,8 +115,8 @@ export function Tasks() {
               onClick={() => setStatusFilter(status)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
                 statusFilter === status
-                  ? "bg-indigo-600 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  ? "bg-brand-600 text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
               }`}
             >
               {status}
@@ -180,15 +180,15 @@ export function Tasks() {
         />
       ) : (
         <div className="card-base overflow-hidden">
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <div className="divide-y divide-stone-100 dark:divide-stone-800">
             {(tasks ?? []).map((task) => {
               const assignee = members.find((m) => m.user_id === task.assigned_to)?.name ?? "Unassigned";
               const overdue = isOverdue(task.deadline, task.status);
               return (
-                <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60 sm:px-5">
+                <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-stone-50 dark:hover:bg-stone-800/60 sm:px-5">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{task.title}</p>
-                    <p className="truncate text-xs text-zinc-500">
+                    <p className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{task.title}</p>
+                    <p className="truncate text-xs text-stone-500">
                       {task.project_id ? `${projectName(task.project_id) ?? "Project"} · ` : ""}
                       {assignee} · {task.deadline ? (overdue ? "overdue " : "due ") + formatDate(task.deadline) : "no deadline"}
                     </p>

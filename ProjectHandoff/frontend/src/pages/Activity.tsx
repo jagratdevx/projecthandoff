@@ -20,7 +20,7 @@ const ICONS: Record<string, typeof History> = {
 function iconFor(action: string) {
   const key = action.split(".")[0];
   const Icon = ICONS[key] ?? History;
-  return <Icon className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />;
+  return <Icon className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />;
 }
 
 const PAGE_SIZE = 40;
@@ -50,12 +50,12 @@ export function ActivityPage() {
           description="Task updates, handovers, uploads and team changes will appear here."
         />
       ) : (
-        <div className="card-base divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div className="card-base divide-y divide-stone-100 dark:divide-stone-800">
           {items.map((entry) => (
             <div key={entry.activity_id} className="flex items-start gap-3 px-5 py-3.5">
               <span className="mt-1">{iconFor(entry.action)}</span>
               <div className="min-w-0 flex-1">
-                <p className="break-words text-sm text-zinc-700 [overflow-wrap:anywhere] dark:text-zinc-300">
+                <p className="break-words text-sm text-stone-700 [overflow-wrap:anywhere] dark:text-stone-300">
                   {entry.task_id ? (
                     <Link to={`/tasks/${entry.task_id}`} className="hover:underline">
                       {entry.description}
@@ -64,8 +64,8 @@ export function ActivityPage() {
                     entry.description
                   )}
                 </p>
-                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                  <code className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono dark:bg-zinc-800">{entry.action}</code>
+                <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-stone-400">
+                  <code className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-mono dark:bg-stone-800">{entry.action}</code>
                   <span>{timeAgo(entry.timestamp)}</span>
                 </p>
               </div>

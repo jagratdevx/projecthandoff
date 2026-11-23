@@ -138,10 +138,10 @@ export function Settings() {
         <CardHeader title="Appearance" />
         <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <Monitor className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
+            <Monitor className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
             <div>
-              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Theme</p>
-              <p className="text-xs text-zinc-500">Currently using {theme} mode.</p>
+              <p className="text-sm font-medium text-stone-900 dark:text-stone-100">Theme</p>
+              <p className="text-xs text-stone-500">Currently using {theme} mode.</p>
             </div>
           </div>
           <Button variant="secondary" onClick={toggle} className="w-full sm:w-auto">
@@ -155,21 +155,21 @@ export function Settings() {
         <CardHeader title="Storage & synchronization" />
         <div className="p-5">
           {driveLoading ? (
-            <p className="text-sm text-zinc-500">Checking storage status…</p>
+            <p className="text-sm text-stone-500">Checking storage status…</p>
           ) : (
             <div className="space-y-4">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
-                  {isDriveMode ? <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden /> : <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-zinc-400" aria-hidden />}
+                  {isDriveMode ? <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden /> : <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden />}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
                       {isDriveMode ? "Google Drive (organizer account)" : "Local development storage"}
                     </p>
-                    <p className="break-words text-xs text-zinc-500">{drive?.message ?? "All structured data lives in CSV files in Drive; uploads are stored there too."}</p>
+                    <p className="break-words text-xs text-stone-500">{drive?.message ?? "All structured data lives in CSV files in Drive; uploads are stored there too."}</p>
                   </div>
                 </div>
                 {isDriveMode && (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 dark:text-stone-400">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${drive?.authorized ? "bg-emerald-500" : "bg-red-500"}`}
                       aria-hidden
@@ -191,12 +191,12 @@ export function Settings() {
               )}
 
               {isDriveMode && (
-                <div className="flex flex-col items-start gap-3 rounded-lg border border-zinc-200 px-3.5 py-3 dark:border-zinc-800 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-col items-start gap-3 rounded-lg border border-stone-200 px-3.5 py-3 dark:border-stone-800 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 text-sm">
-                    <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                    <p className="font-medium text-stone-900 dark:text-stone-100">
                       Drive authorization: {drive?.authorized ? "connected" : "not connected"}
                     </p>
-                    <p className="break-words text-xs text-zinc-500">
+                    <p className="break-words text-xs text-stone-500">
                       {drive?.authorized ? `Authorized as ${drive.account ?? "organizer"}` : "The organizer must authorize once; all team members share this connection."}
                     </p>
                   </div>
@@ -208,7 +208,7 @@ export function Settings() {
                 </div>
               )}
 
-              <div className="rounded-lg border border-zinc-200 px-3.5 py-3 text-xs text-zinc-500 dark:border-zinc-800">
+              <div className="rounded-lg border border-stone-200 px-3.5 py-3 text-xs text-stone-500 dark:border-stone-800">
                 <p>RefreshCw-style sync: the app polls the server every 10–15 seconds, refreshes immediately after your actions, and shows the last sync time in the top bar. A hosted backend must stay reachable for live updates.</p>
               </div>
             </div>
@@ -221,8 +221,8 @@ export function Settings() {
         <CardHeader title="Session" />
         <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="break-words text-sm font-medium text-zinc-900 dark:text-zinc-100">Signed in as {user?.email}</p>
-            <p className="text-xs text-zinc-500">Last synchronized with the server at {formatTime(Date.now())}</p>
+            <p className="break-words text-sm font-medium text-stone-900 dark:text-stone-100">Signed in as {user?.email}</p>
+            <p className="text-xs text-stone-500">Last synchronized with the server at {formatTime(Date.now())}</p>
           </div>
           <Button variant="secondary" onClick={() => { window.location.href = "/login"; }} className="w-full sm:w-auto">
             <LogOut className="h-4 w-4" aria-hidden /> Sign out of this browser

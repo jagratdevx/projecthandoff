@@ -33,8 +33,8 @@ interface HandoverDetailData {
 function Section({ label, value }: { label: string; value: string }) {
   return (
     <div className="px-5 py-3.5">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{value || "—"}</p>
+      <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{label}</p>
+      <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700 dark:text-stone-300">{value || "—"}</p>
     </div>
   );
 }
@@ -87,7 +87,7 @@ export function HandoverDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate("/handovers")} className="mb-3 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+      <button onClick={() => navigate("/handovers")} className="mb-3 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
         ← Back to handovers
       </button>
 
@@ -130,7 +130,7 @@ export function HandoverDetail() {
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader title="Handover context" />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               <Section label="Work already completed" value={handover.completed_work} />
               <Section label="Work remaining" value={handover.remaining_work} />
               <Section label="Current state" value={handover.current_state} />
@@ -139,8 +139,8 @@ export function HandoverDetail() {
               <Section label="Relevant files" value={handover.relevant_files} />
               <Section label="Target deadline" value={handover.deadline ? formatDate(handover.deadline) : ""} />
               <div className="px-5 py-3.5">
-                <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Timeline</p>
-                <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">
+                <p className="text-xs font-medium uppercase tracking-wide text-stone-400">Timeline</p>
+                <p className="mt-1 text-sm text-stone-700 dark:text-stone-300">
                   Sent {formatDate(handover.created_at)}
                   {handover.accepted_at && ` · resolved ${formatDate(handover.accepted_at)}`}
                 </p>
@@ -153,8 +153,8 @@ export function HandoverDetail() {
               <CardHeader title="Linked task" />
               <div className="flex items-center justify-between px-5 py-4">
                 <div>
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{task.title}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-sm font-medium text-stone-900 dark:text-stone-100">{task.title}</p>
+                  <p className="text-xs text-stone-500">
                     Currently assigned to {names[task.assigned_to] ?? "Unknown"} · {task.status}
                   </p>
                 </div>
@@ -167,7 +167,7 @@ export function HandoverDetail() {
 
           <Card>
             <CardHeader title="Discussion" />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {comments.length === 0 && (
                 <EmptyState
                   icon={<ArrowLeftRight className="h-6 w-6" aria-hidden />}
@@ -180,10 +180,10 @@ export function HandoverDetail() {
                   <Avatar name={names[entry.user_id] ?? "Unknown"} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm">
-                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{names[entry.user_id] ?? "Unknown"}</span>{" "}
-                      <span className="text-xs text-zinc-400">{timeAgo(entry.created_at)}</span>
+                      <span className="font-medium text-stone-900 dark:text-stone-100">{names[entry.user_id] ?? "Unknown"}</span>{" "}
+                      <span className="text-xs text-stone-400">{timeAgo(entry.created_at)}</span>
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{entry.comment}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700 dark:text-stone-300">{entry.comment}</p>
                   </div>
                 </div>
               ))}
@@ -199,14 +199,14 @@ export function HandoverDetail() {
                 <Avatar name={names[handover.previous_owner_id] ?? "Unknown"} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{names[handover.previous_owner_id] ?? "Unknown"}</p>
-                  <p className="text-xs text-zinc-500">Previous owner</p>
+                  <p className="text-xs text-stone-500">Previous owner</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <Avatar name={names[handover.proposed_owner_id] ?? "Unknown"} />
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{names[handover.proposed_owner_id] ?? "Unknown"}</p>
-                  <p className="text-xs text-zinc-500">Proposed new owner</p>
+                  <p className="text-xs text-stone-500">Proposed new owner</p>
                 </div>
               </div>
             </div>
@@ -214,9 +214,9 @@ export function HandoverDetail() {
 
           {(isPreviousOwner || isAdmin) && (handover.status === "pending" || handover.status === "clarification_requested") && (
             <Card className="p-5">
-              <p className="mb-3 text-sm font-medium text-zinc-900 dark:text-zinc-100">Handover controls</p>
+              <p className="mb-3 text-sm font-medium text-stone-900 dark:text-stone-100">Handover controls</p>
               {handover.status === "clarification_requested" ? (
-                <p className="mb-3 text-sm text-zinc-500">Awaiting your clarification response.</p>
+                <p className="mb-3 text-sm text-stone-500">Awaiting your clarification response.</p>
               ) : null}
               <div className="space-y-2">
                 {handover.status === "pending" && (
@@ -244,7 +244,7 @@ export function HandoverDetail() {
           }}
           className="space-y-4"
         >
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-stone-500 dark:text-stone-400">
             The current owner keeps the task. Your reason is posted to the task discussion.
           </p>
           <Field label="Reason *">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../state/AuthContext";
+import { AuthShell } from "../components/AuthShell";
 import { Button, Card, ErrorNote, Field, Input } from "../components/ui";
 
 interface ValidateResponse {
@@ -52,59 +53,50 @@ export function JoinTeam() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">
-            PH
-          </div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Join your team</h1>
-        </div>
-        <Card className="p-6">
-          {validating ? (
-            <p className="text-sm text-zinc-500">Validating invitation…</p>
-          ) : validationError ? (
-            <div className="space-y-4">
-              <ErrorNote message={validationError} />
-              <Link to="/login" className="block text-center text-sm font-medium text-indigo-600 hover:underline">
-                Back to sign in
-              </Link>
-            </div>
-          ) : validation ? (
-            <form onSubmit={submit} className="space-y-4">
-              <p className="rounded-lg bg-indigo-50 px-3.5 py-2.5 text-sm text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
-                You have been invited to join <strong>{validation.team_name}</strong> as{" "}
-                <strong>{validation.role}</strong> with the email <strong>{validation.email}</strong>.
-              </p>
-              {error && <ErrorNote message={error} />}
-              <Field label="Your name">
-                <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Rivera" />
-              </Field>
-              <Field label="Password" hint="At least 8 characters.">
-                <Input
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </Field>
-              <Button type="submit" loading={loading} className="w-full">
-                Join {validation.team_name}
-              </Button>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <ErrorNote message="This page needs a valid invitation link (…/join?token=…)." />
-              <Link to="/login" className="block text-center text-sm font-medium text-indigo-600 hover:underline">
-                Back to sign in
-              </Link>
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
+    <AuthShell
+      title="Join your team"
+      subtitle="Finish setting up your account to accept the invitation."
+      footer={
+        <Link to="/login" className="link-accent">
+          Back to sign in
+        </Link>
+      }
+    >
+      <Card className="p-6 shadow-card-hover sm:p-7">
+        {validating ? (
+          <p className="text-sm text-stone-500 dark:text-stone-400">Validating invitation…</p>
+        ) : validationError ? (
+          <ErrorNote message={validationError} />
+        ) : validation ? (
+          <form onSubmit={submit} className="space-y-4">
+            <p className="rounded-xl bg-brand-50 px-3.5 py-3 text-sm leading-relaxed text-brand-900 ring-1 ring-inset ring-brand-600/10 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/20">
+              You have been invited to join <strong className="font-semibold">{validation.team_name}</strong> as{" "}
+              <strong className="font-semibold">{validation.role}</strong> with the email{" "}
+              <strong className="font-semibold">{validation.email}</strong>.
+            </p>
+            {error && <ErrorNote message={error} />}
+            <Field label="Your name">
+              <Input required value={name} onChange={(e) => setName(e.target.value)} placeholder="Alex Rivera" />
+            </Field>
+            <Field label="Password" hint="At least 8 characters.">
+              <Input
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+              />
+            </Field>
+            <Button type="submit" loading={loading} className="mt-1 w-full">
+              Join {validation.team_name}
+            </Button>
+          </form>
+        ) : (
+          <ErrorNote message="This page needs a valid invitation link (…/join?token=…)." />
+        )}
+      </Card>
+    </AuthShell>
   );
 }

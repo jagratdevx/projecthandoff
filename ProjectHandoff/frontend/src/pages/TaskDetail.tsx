@@ -175,7 +175,7 @@ export function TaskDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate("/tasks")} className="mb-3 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+      <button onClick={() => navigate("/tasks")} className="mb-3 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
         ← Back to tasks
       </button>
 
@@ -261,12 +261,12 @@ export function TaskDetail() {
                 />
               </Field>
             </div>
-            <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+            <div className="mt-4 border-t border-stone-100 pt-4 dark:border-stone-800">
               <Field label="Description">
                 {descriptionDraft === null ? (
                   <button
                     onClick={() => setDescriptionDraft(task.description)}
-                    className="w-full rounded-lg border border-dashed border-zinc-300 px-3 py-2.5 text-left text-sm text-zinc-600 transition hover:border-indigo-400 dark:border-zinc-700 dark:text-zinc-300"
+                    className="w-full rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-left text-sm text-stone-600 transition hover:border-brand-400 dark:border-stone-700 dark:text-stone-300"
                   >
                     {task.description || "Click to add a description…"}
                   </button>
@@ -293,7 +293,7 @@ export function TaskDetail() {
                   </div>
                 )}
               </Field>
-              <p className="mt-3 text-xs text-zinc-400">
+              <p className="mt-3 text-xs text-stone-400">
                 Created {formatDate(task.created_at)} · version {task.version} · updated {timeAgo(task.updated_at)}
               </p>
             </div>
@@ -302,21 +302,21 @@ export function TaskDetail() {
           {/* Handovers */}
           <Card>
             <CardHeader title={`Handover history (${handovers.length})`} />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {handovers.length === 0 && (
-                <p className="px-5 py-5 text-sm text-zinc-500">
+                <p className="px-5 py-5 text-sm text-stone-500">
                   No handovers for this task yet. Use “Hand over” to transfer responsibility with full context.
                 </p>
               )}
               {handovers.map((handover) => (
-                <Link key={handover.handover_id} to={`/handovers/${handover.handover_id}`} className="block px-5 py-3.5 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+                <Link key={handover.handover_id} to={`/handovers/${handover.handover_id}`} className="block px-5 py-3.5 transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm text-zinc-700 dark:text-zinc-300">
+                    <p className="text-sm text-stone-700 dark:text-stone-300">
                       {names[handover.previous_owner_id] ?? "Unknown"} → {names[handover.proposed_owner_id] ?? "Unknown"}
                     </p>
                     <Badge value={handover.status} />
                   </div>
-                  <p className="mt-0.5 text-xs text-zinc-400">sent {timeAgo(handover.created_at)}</p>
+                  <p className="mt-0.5 text-xs text-stone-400">sent {timeAgo(handover.created_at)}</p>
                 </Link>
               ))}
             </div>
@@ -325,22 +325,22 @@ export function TaskDetail() {
           {/* Comments */}
           <Card>
             <CardHeader title={`Discussion (${comments.length})`} />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {comments.length === 0 && <p className="px-5 py-5 text-sm text-zinc-500">No comments yet.</p>}
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {comments.length === 0 && <p className="px-5 py-5 text-sm text-stone-500">No comments yet.</p>}
               {comments.map((entry) => (
                 <div key={entry.comment_id} className="flex gap-3 px-5 py-3.5">
                   <Avatar name={names[entry.user_id] ?? "Unknown"} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm">
-                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{names[entry.user_id] ?? "Unknown"}</span>{" "}
-                      <span className="text-xs text-zinc-400">{timeAgo(entry.created_at)}</span>
+                      <span className="font-medium text-stone-900 dark:text-stone-100">{names[entry.user_id] ?? "Unknown"}</span>{" "}
+                      <span className="text-xs text-stone-400">{timeAgo(entry.created_at)}</span>
                     </p>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-zinc-700 dark:text-zinc-300">{entry.comment}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-stone-700 dark:text-stone-300">{entry.comment}</p>
                   </div>
                 </div>
               ))}
             </div>
-            <form onSubmit={addComment} className="flex items-start gap-2 border-t border-zinc-200 p-4 dark:border-zinc-800">
+            <form onSubmit={addComment} className="flex items-start gap-2 border-t border-stone-200 p-4 dark:border-stone-800">
               <Textarea
                 rows={2}
                 placeholder="Write a comment…"
@@ -362,15 +362,15 @@ export function TaskDetail() {
             <CardHeader
               title="Files"
               action={
-                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400">
                   <Upload className="h-3.5 w-3.5" aria-hidden />
                   {uploading ? "Uploading…" : "Attach"}
                   <input ref={fileInput} type="file" className="hidden" onChange={uploadFile} disabled={uploading} />
                 </label>
               }
             />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {attachments.length === 0 && <p className="px-5 py-4 text-sm text-zinc-500">No files attached.</p>}
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {attachments.length === 0 && <p className="px-5 py-4 text-sm text-stone-500">No files attached.</p>}
               {attachments.map((file) => (
                 <div key={file.attachment_id} className="flex items-center justify-between gap-2 px-4 py-2.5">
                   <button
@@ -378,8 +378,8 @@ export function TaskDetail() {
                     className="flex min-w-0 items-center gap-2 text-left"
                     title="Download file"
                   >
-                    <FileDown className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
-                    <span className="truncate text-sm text-zinc-700 hover:underline dark:text-zinc-300">{file.file_name}</span>
+                    <FileDown className="h-4 w-4 shrink-0 text-stone-400" aria-hidden />
+                    <span className="truncate text-sm text-stone-700 hover:underline dark:text-stone-300">{file.file_name}</span>
                   </button>
                   <Button
                     variant="ghost"
@@ -397,16 +397,16 @@ export function TaskDetail() {
           {/* History */}
           <Card>
             <CardHeader title="History" />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {activity.length === 0 && (
-                <div className="flex items-center gap-2 px-5 py-4 text-sm text-zinc-500">
+                <div className="flex items-center gap-2 px-5 py-4 text-sm text-stone-500">
                   <History className="h-4 w-4" aria-hidden /> No history yet.
                 </div>
               )}
               {activity.map((entry) => (
                 <div key={entry.activity_id} className="px-5 py-2.5">
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300">{entry.description}</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-400">{timeAgo(entry.timestamp)}</p>
+                  <p className="text-xs text-stone-700 dark:text-stone-300">{entry.description}</p>
+                  <p className="mt-0.5 text-[11px] text-stone-400">{timeAgo(entry.timestamp)}</p>
                 </div>
               ))}
             </div>
@@ -416,7 +416,7 @@ export function TaskDetail() {
 
       {/* Handover modal */}
       <Modal open={handoverOpen} onClose={() => setHandoverOpen(false)} title="Hand over this task" wide>
-        <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mb-4 text-sm text-stone-500 dark:text-stone-400">
           The new owner receives the complete context: what is done, what remains, current state, blockers and next
           actions. They can accept, reject with a reason, or ask for clarification.
         </p>

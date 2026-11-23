@@ -65,13 +65,13 @@ export function Events() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {(data ?? []).map((event) => (
-            <Link key={event.event_id} to={`/events/${event.event_id}`} className="card-base block p-5 transition hover:border-indigo-300 dark:hover:border-indigo-700">
+            <Link key={event.event_id} to={`/events/${event.event_id}`} className="card-base block p-5 transition hover:border-brand-300 dark:hover:border-brand-700">
               <div className="flex items-start justify-between gap-3">
-                <p className="font-medium text-zinc-900 dark:text-zinc-50">{event.name}</p>
+                <p className="font-medium text-stone-900 dark:text-stone-50">{event.name}</p>
                 <Badge value={event.status} />
               </div>
-              <p className="mt-0.5 line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">{event.description || "No description"}</p>
-              <p className="mt-2 text-xs text-zinc-500">
+              <p className="mt-0.5 line-clamp-2 text-sm text-stone-500 dark:text-stone-400">{event.description || "No description"}</p>
+              <p className="mt-2 text-xs text-stone-500">
                 {event.start_date ? formatDate(event.start_date) : "TBD"}
                 {event.end_date ? ` → ${formatDate(event.end_date)}` : ""}
               </p>

@@ -71,48 +71,51 @@ export function Layout() {
 
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2.5 px-5 py-5">
-        <img src="/logo.png" alt="ProjectHandoff logo" className="h-8 w-8 rounded-lg" />
-        <div>
-          <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">ProjectHandoff</p>
-          <p className="text-[11px] leading-tight text-zinc-500">{team?.name ?? "No team yet"}</p>
+      <div className="flex items-center gap-3 px-5 pb-5 pt-6">
+        <img src="/logo.png" alt="ProjectHandoff logo" className="h-9 w-9 rounded-xl shadow-sm ring-1 ring-inset ring-black/5" />
+        <div className="min-w-0">
+          <p className="truncate text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">ProjectHandoff</p>
+          <p className="truncate text-[11px] leading-tight text-stone-500 dark:text-stone-400">{team?.name ?? "No team yet"}</p>
         </div>
       </div>
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3" aria-label="Main navigation">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, badge }) => (
-          <NavLink
-            key={to}
-            to={to}
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                isActive
-                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
-                  : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-              }`
-            }
-          >
-            <Icon className="h-4.5 w-4.5 h-[18px] w-[18px]" aria-hidden />
-            <span className="flex-1">{label}</span>
-            {badge && handoverCount > 0 && (
-              <span className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
-                {handoverCount}
-              </span>
-            )}
-          </NavLink>
-        ))}
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3" aria-label="Main navigation">
+        <p className="eyebrow px-3 pb-2">Workspace</p>
+        <div className="space-y-0.5">
+          {NAV_ITEMS.map(({ to, label, icon: Icon, badge }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  isActive
+                    ? "bg-stone-900 text-white shadow-sm dark:bg-stone-100 dark:text-stone-900"
+                    : "text-stone-600 hover:bg-stone-200/50 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+                }`
+              }
+            >
+              <Icon className="h-[18px] w-[18px]" aria-hidden />
+              <span className="flex-1">{label}</span>
+              {badge && handoverCount > 0 && (
+                <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white">
+                  {handoverCount}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </div>
       </nav>
-      <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
-        <div className="flex items-center gap-2.5 rounded-lg px-2 py-2">
+      <div className="border-t border-stone-200/80 p-3 dark:border-stone-800/80">
+        <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
           <Avatar name={user?.name ?? ""} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{user?.name}</p>
-            <p className="truncate text-xs text-zinc-500">{user?.email}</p>
+            <p className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{user?.name}</p>
+            <p className="truncate text-xs text-stone-500 dark:text-stone-400">{user?.email}</p>
           </div>
           {user && <Badge value={user.role} />}
         </div>
         <button
           onClick={handleLogout}
-          className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-200/50 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
         >
           <LogOut className="h-4 w-4" aria-hidden />
           Sign out
@@ -124,23 +127,23 @@ export function Layout() {
   return (
     <div className="flex min-h-screen">
       {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900 lg:block">
+      <aside className="hidden w-60 shrink-0 border-r border-stone-200/80 bg-[#efede8]/70 dark:border-stone-800/80 dark:bg-stone-900/60 lg:block">
         <div className="sticky top-0 h-screen">{sidebar}</div>
       </aside>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div id="mobile-nav" className="fixed inset-0 z-40 lg:hidden">
-          <div className="absolute inset-0 bg-zinc-950/50" onClick={() => setSidebarOpen(false)} aria-hidden />
+          <div className="absolute inset-0 bg-stone-950/40 backdrop-blur-sm" onClick={() => setSidebarOpen(false)} aria-hidden />
           <aside
             role="dialog"
             aria-modal="true"
             aria-label="Navigation"
-            className="absolute left-0 top-0 h-full w-60 max-w-[85vw] border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+            className="absolute left-0 top-0 h-full w-60 max-w-[85vw] border-r border-stone-200/80 bg-[#fbfaf8] shadow-card-hover dark:border-stone-800/80 dark:bg-stone-900"
           >
             <button
               onClick={() => setSidebarOpen(false)}
-              className="absolute right-2 top-2 rounded-md p-2 text-zinc-500"
+              className="absolute right-2 top-2 rounded-lg p-2 text-stone-500 hover:bg-stone-200/60 dark:hover:bg-stone-800"
               aria-label="Close navigation"
             >
               <X className="h-4 w-4" aria-hidden />
@@ -151,10 +154,10 @@ export function Layout() {
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/90 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-stone-200/80 bg-[#f6f5f2]/80 px-4 backdrop-blur-md dark:border-stone-800/80 dark:bg-stone-950/80 sm:px-6 lg:px-10">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="rounded-md p-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 lg:hidden"
+            className="rounded-lg p-2 text-stone-500 hover:bg-stone-200/60 dark:hover:bg-stone-800 lg:hidden"
             aria-label="Open navigation"
             aria-expanded={sidebarOpen}
             aria-controls="mobile-nav"
@@ -165,14 +168,14 @@ export function Layout() {
           <SyncIndicator />
           <button
             onClick={toggle}
-            className="rounded-md p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            className="rounded-lg p-2 text-stone-500 transition hover:bg-stone-200/60 hover:text-stone-900 dark:hover:bg-stone-800 dark:hover:text-stone-100"
             title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
             aria-label="Toggle color theme"
           >
             {theme === "dark" ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
           </button>
         </header>
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-10">
           <Outlet />
         </main>
       </div>

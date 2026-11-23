@@ -156,7 +156,7 @@ export function ProjectDetail() {
 
   return (
     <div>
-      <button onClick={() => navigate("/projects")} className="mb-3 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+      <button onClick={() => navigate("/projects")} className="mb-3 text-sm text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
         ← Back to projects
       </button>
 
@@ -185,19 +185,19 @@ export function ProjectDetail() {
 
       <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Owner</p>
+          <p className="text-xs text-stone-500">Owner</p>
           <p className="mt-1 truncate text-sm font-medium">{ownerName}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Deadline</p>
+          <p className="text-xs text-stone-500">Deadline</p>
           <p className="mt-1 text-sm font-medium">{project.deadline ? formatDate(project.deadline) : "—"}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Start date</p>
+          <p className="text-xs text-stone-500">Start date</p>
           <p className="mt-1 text-sm font-medium">{project.start_date ? formatDate(project.start_date) : "—"}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-xs text-zinc-500">Progress</p>
+          <p className="text-xs text-stone-500">Progress</p>
           <ProgressBar completed={progress.completed} total={progress.total} className="mt-2.5" />
         </Card>
       </div>
@@ -223,15 +223,15 @@ export function ProjectDetail() {
                 </Button>
               }
             />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {tasks.length === 0 && <p className="px-5 py-6 text-sm text-zinc-500">No tasks yet. Add the first one.</p>}
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {tasks.length === 0 && <p className="px-5 py-6 text-sm text-stone-500">No tasks yet. Add the first one.</p>}
               {tasks.map((task) => {
                 const assignee = data.members.find((m) => m.user_id === task.assigned_to)?.name ?? "Unassigned";
                 return (
-                  <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+                  <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{task.title}</p>
-                      <p className="text-xs text-zinc-500">
+                      <p className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{task.title}</p>
+                      <p className="text-xs text-stone-500">
                         {assignee} · {task.deadline ? `due ${formatDate(task.deadline)}` : "no deadline"}
                       </p>
                     </div>
@@ -251,20 +251,20 @@ export function ProjectDetail() {
             <CardHeader
               title="Project files"
               action={
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 shadow-sm hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium text-stone-700 shadow-sm hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-200 dark:hover:bg-stone-800">
                   <Upload className="h-4 w-4" aria-hidden />
                   {uploading ? "Uploading…" : "Upload file"}
                   <input type="file" className="hidden" onChange={uploadFile} disabled={uploading} />
                 </label>
               }
             />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-              {(files ?? []).length === 0 && <p className="px-5 py-6 text-sm text-zinc-500">No files uploaded for this project yet.</p>}
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {(files ?? []).length === 0 && <p className="px-5 py-6 text-sm text-stone-500">No files uploaded for this project yet.</p>}
               {(files ?? []).map((file) => (
                 <div key={file.attachment_id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-zinc-900 dark:text-zinc-100">{file.file_name}</p>
-                    <p className="text-xs text-zinc-500">
+                    <p className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{file.file_name}</p>
+                    <p className="text-xs text-stone-500">
                       {data.members.find((m) => m.user_id === file.uploaded_by)?.name ?? "Unknown"} · {timeAgo(file.uploaded_at)}
                     </p>
                   </div>
@@ -284,16 +284,16 @@ export function ProjectDetail() {
         {tab === "activity" && (
           <Card>
             <CardHeader title="Project activity" />
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {activity.length === 0 && (
-                <div className="flex items-center gap-2 px-5 py-6 text-sm text-zinc-500">
+                <div className="flex items-center gap-2 px-5 py-6 text-sm text-stone-500">
                   <History className="h-4 w-4" aria-hidden /> No activity recorded yet.
                 </div>
               )}
               {activity.map((entry) => (
                 <div key={entry.activity_id} className="px-5 py-3">
-                  <p className="text-sm text-zinc-700 dark:text-zinc-300">{entry.description}</p>
-                  <p className="mt-0.5 text-xs text-zinc-400">
+                  <p className="text-sm text-stone-700 dark:text-stone-300">{entry.description}</p>
+                  <p className="mt-0.5 text-xs text-stone-400">
                     {entry.action} · {timeAgo(entry.timestamp)}
                   </p>
                 </div>

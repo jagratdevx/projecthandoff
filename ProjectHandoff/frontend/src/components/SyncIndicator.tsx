@@ -33,7 +33,7 @@ export function SyncIndicator({ onRefresh }: { onRefresh?: () => void }) {
 
   let icon: React.ReactNode;
   let label: string;
-  let color = "text-zinc-500 dark:text-zinc-400";
+  let color = "text-stone-500 dark:text-stone-400";
 
   if (state.inflight > 0 && busyMs > 8000) {
     icon = <TriangleAlert className="h-3.5 w-3.5" aria-hidden />;
@@ -42,7 +42,7 @@ export function SyncIndicator({ onRefresh }: { onRefresh?: () => void }) {
   } else if (state.inflight > 0 && busyMs > 1500) {
     icon = <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />;
     label = "Syncing…";
-    color = "text-indigo-500";
+    color = "text-brand-500";
   } else if (state.inflight > 0) {
     // Brief traffic (page navigation, quick actions): stay quiet.
     icon = <Check className="h-3.5 w-3.5" aria-hidden />;
@@ -68,7 +68,7 @@ export function SyncIndicator({ onRefresh }: { onRefresh?: () => void }) {
       {onRefresh && (
         <button
           onClick={onRefresh}
-          className="rounded-md p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          className="rounded-md p-1.5 text-stone-500 transition hover:bg-stone-100 hover:text-stone-900 dark:hover:bg-stone-800 dark:hover:text-stone-100"
           title="Refresh now"
           aria-label="Refresh data now"
         >

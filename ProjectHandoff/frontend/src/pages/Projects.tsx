@@ -106,8 +106,8 @@ export function Projects() {
             onClick={() => setStatusFilter(status)}
             className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
               statusFilter === status
-                ? "bg-indigo-600 text-white"
-                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                ? "bg-brand-600 text-white"
+                : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
             }`}
           >
             {status}
@@ -145,17 +145,17 @@ export function Projects() {
             const progress = progressByProject.get(project.project_id) ?? { total: 0, completed: 0 };
             const overdue = isOverdue(project.deadline, project.status);
             return (
-              <Link key={project.project_id} to={`/projects/${project.project_id}`} className="card-base block min-w-0 p-5 transition hover:border-indigo-300 dark:hover:border-indigo-700">
+              <Link key={project.project_id} to={`/projects/${project.project_id}`} className="card-base block min-w-0 p-5 transition hover:border-brand-300 dark:hover:border-brand-700">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="line-clamp-2 break-words font-medium text-zinc-900 dark:text-zinc-50">{project.name}</p>
-                    <p className="mt-0.5 line-clamp-2 text-sm text-zinc-500 dark:text-zinc-400">
+                    <p className="line-clamp-2 break-words font-medium text-stone-900 dark:text-stone-50">{project.name}</p>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-stone-500 dark:text-stone-400">
                       {project.description || "No description"}
                     </p>
                   </div>
                   <Badge value={project.status} className="shrink-0" />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-stone-500">
                   <Badge value={project.priority} className="shrink-0" />
                   <span>·</span>
                   <span className={`min-w-0 ${overdue ? "font-medium text-red-600 dark:text-red-400" : ""}`}>

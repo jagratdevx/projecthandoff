@@ -136,8 +136,8 @@ export function TeamPage() {
               <Field label="Description">
                 <Textarea value={teamForm.description} onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })} placeholder="What does this team do?" />
               </Field>
-              <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3.5 dark:border-indigo-900 dark:bg-indigo-950/40">
-                <p className="mb-3 text-sm font-medium text-indigo-900 dark:text-indigo-200">
+              <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3.5 dark:border-brand-900 dark:bg-brand-950/40">
+                <p className="mb-3 text-sm font-medium text-brand-900 dark:text-brand-200">
                   Connect your Google Drive — all team files live in a folder you own
                 </p>
                 <div className="space-y-3">
@@ -158,13 +158,13 @@ export function TeamPage() {
                       placeholder="GOCSPX-…"
                     />
                   </Field>
-                  <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <div className="text-xs text-stone-600 dark:text-stone-400">
                     <p className="font-medium">Add this redirect URI in your Google Cloud console:</p>
-                    <code className="mt-1 block break-all rounded bg-zinc-100 px-2 py-1 font-mono text-[11px] dark:bg-zinc-800">
+                    <code className="mt-1 block break-all rounded bg-stone-100 px-2 py-1 font-mono text-[11px] dark:bg-stone-800">
                       {redirectUri || "loading…"}
                     </code>
                   </div>
-                  <details className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <details className="text-xs text-stone-600 dark:text-stone-400">
                     <summary className="cursor-pointer font-medium">How do I get these? (one-time, ~10 min, free)</summary>
                     <p className="mt-2 leading-relaxed">{DRIVE_SETUP_HELP}</p>
                   </details>
@@ -173,7 +173,7 @@ export function TeamPage() {
               <Button type="submit" loading={saving} className="w-full">
                 <UserPlus className="h-4 w-4" aria-hidden /> Create team &amp; connect Drive
               </Button>
-              <p className="text-center text-xs text-zinc-500">
+              <p className="text-center text-xs text-stone-500">
                 Members never need a Google account for this — only you, once. Have an invite link instead? Open it and register there.
               </p>
             </form>
@@ -355,7 +355,7 @@ export function TeamPage() {
           />
           <div className="space-y-3 px-5 py-4">
             {drive.connected ? (
-              <p className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <p className="flex items-start gap-2 text-sm text-stone-700 dark:text-stone-300">
                 <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" aria-hidden />
                 {drive.via_host
                   ? `Running on the organizer's Google Drive${drive.account ? ` (${drive.account})` : ""} — everything syncs automatically. Optionally connect the team's own Drive below.`
@@ -371,12 +371,12 @@ export function TeamPage() {
 
             {team.drive_folder_id ? (
               <div className="flex flex-wrap items-center gap-3">
-                <FolderOpen className="h-5 w-5 shrink-0 text-indigo-500" aria-hidden />
+                <FolderOpen className="h-5 w-5 shrink-0 text-brand-500" aria-hidden />
                 <a
                   href={team.drive_folder_url || `https://drive.google.com/drive/folders/${team.drive_folder_id}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex min-w-0 items-center gap-1.5 break-words text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                  className="inline-flex min-w-0 items-center gap-1.5 break-words text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
                 >
                   Open the team folder in Google Drive <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 </a>
@@ -399,7 +399,7 @@ export function TeamPage() {
               </form>
             ) : null}
 
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-stone-500">
               Everything the team stores — uploads, completed work, handover files and the app's data —
               lives in this folder{team.drive_folder_id ? "" : " once linked"}, and every member gets access automatically. Members never need a Google login.
             </p>
@@ -419,15 +419,15 @@ export function TeamPage() {
             )
           }
         />
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <div className="divide-y divide-stone-100 dark:divide-stone-800">
           {loading && members.length === 0 && <div className="p-5"><SkeletonList rows={2} /></div>}
           {members.map((member) => (
             <div key={member.user_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                  {member.name} {member.user_id === user?.user_id && <span className="text-xs text-zinc-400">(you)</span>}
+                <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
+                  {member.name} {member.user_id === user?.user_id && <span className="text-xs text-stone-400">(you)</span>}
                 </p>
-                <p className="break-words text-xs text-zinc-500">{member.email} · joined {formatDate(member.joined_at)}</p>
+                <p className="break-words text-xs text-stone-500">{member.email} · joined {formatDate(member.joined_at)}</p>
               </div>
               <div className="flex items-center gap-2">
                 {isAdmin && member.role !== "owner" ? (
@@ -464,8 +464,8 @@ export function TeamPage() {
             }
           />
           {lastInvite && lastInvite.invite_url && (
-            <div className="mx-5 mt-4 flex flex-col gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3.5 py-2.5 dark:border-indigo-800 dark:bg-indigo-950/60 sm:flex-row sm:items-center">
-              <p className="min-w-0 flex-1 break-all text-sm text-indigo-900 dark:text-indigo-200">{lastInvite.invite_url}</p>
+            <div className="mx-5 mt-4 flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2.5 dark:border-brand-800 dark:bg-brand-950/60 sm:flex-row sm:items-center">
+              <p className="min-w-0 flex-1 break-all text-sm text-brand-900 dark:text-brand-200">{lastInvite.invite_url}</p>
               <Button
                 variant="secondary"
                 className="w-full sm:w-auto"
@@ -480,17 +480,17 @@ export function TeamPage() {
               </Button>
             </div>
           )}
-          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <div className="divide-y divide-stone-100 dark:divide-stone-800">
             {(invitations ?? []).length === 0 && (
-              <p className="px-5 py-6 text-sm text-zinc-500">
+              <p className="px-5 py-6 text-sm text-stone-500">
                 No invitations yet. Generate a link and share it with teammates.
               </p>
             )}
             {(invitations ?? []).map((invitation) => (
               <div key={invitation.invitation_id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
                 <div className="min-w-0">
-                  <p className="break-words text-sm text-zinc-900 dark:text-zinc-100">{invitation.email}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="break-words text-sm text-stone-900 dark:text-stone-100">{invitation.email}</p>
+                  <p className="text-xs text-stone-500">
                     {invitation.role} · expires {formatDate(invitation.expires_at)}
                   </p>
                 </div>
@@ -538,7 +538,7 @@ export function TeamPage() {
               onChange={(e) => setFolderForm({ drive_folder_url: e.target.value })}
               placeholder="https://drive.google.com/drive/folders/…"
             />
-            <p className="mt-1.5 text-xs text-zinc-500">
+            <p className="mt-1.5 text-xs text-stone-500">
               Everything the team stores moves into this folder — existing data is migrated automatically
               and every member is granted access. Paste a link to the folder in your own Drive.
             </p>
@@ -569,7 +569,7 @@ export function TeamPage() {
               ))}
             </Select>
           </Field>
-          <p className="text-xs text-zinc-500">A single-use invite link valid for 7 days will be generated.</p>
+          <p className="text-xs text-stone-500">A single-use invite link valid for 7 days will be generated.</p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setInviteOpen(false)}>
               Cancel

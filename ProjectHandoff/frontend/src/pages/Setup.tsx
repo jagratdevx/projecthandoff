@@ -85,18 +85,18 @@ export function Setup() {
   const authorized = status?.authorized ?? false;
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4 dark:bg-stone-950">
       <div className="w-full max-w-lg space-y-4">
         <div className="text-center">
-          <Cloud className="mx-auto h-10 w-10 text-indigo-500" aria-hidden />
-          <h1 className="mt-3 text-2xl font-semibold text-zinc-900 dark:text-zinc-100">Set up ProjectHandoff</h1>
-          <p className="mt-1 text-sm text-zinc-500">
+          <Cloud className="mx-auto h-10 w-10 text-brand-500" aria-hidden />
+          <h1 className="mt-3 text-2xl font-semibold text-stone-900 dark:text-stone-100">Set up ProjectHandoff</h1>
+          <p className="mt-1 text-sm text-stone-500">
             One-time setup connecting the app to Google Drive — all team data will live in your Drive.
           </p>
         </div>
 
         {!status ? (
-          <Card className="flex items-center justify-center gap-3 p-8 text-sm text-zinc-500">
+          <Card className="flex items-center justify-center gap-3 p-8 text-sm text-stone-500">
             <Spinner className="h-5 w-5" /> Contacting the server…
           </Card>
         ) : driveStatus === "error" && !authorized ? (
@@ -104,8 +104,8 @@ export function Setup() {
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" aria-hidden />
               <div>
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Google authorization failed</p>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="text-sm font-medium text-stone-900 dark:text-stone-100">Google authorization failed</p>
+                <p className="mt-1 text-sm text-stone-500">
                   The sign-in with Google didn't complete. You can simply try again — nothing was saved.
                 </p>
                 <Button className="mt-4" onClick={() => void startAuthorization()} loading={authorizing}>
@@ -117,8 +117,8 @@ export function Setup() {
         ) : authorized ? (
           <Card className="p-6 text-center">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" aria-hidden />
-            <p className="mt-3 text-sm font-medium text-zinc-900 dark:text-zinc-100">Google Drive is connected</p>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-3 text-sm font-medium text-stone-900 dark:text-stone-100">Google Drive is connected</p>
+            <p className="mt-1 text-sm text-stone-500">
               Everything is ready. Create the organizer account next — it becomes the team owner.
             </p>
             <Button className="mt-5 w-full" onClick={() => navigate("/register")}>
@@ -129,13 +129,13 @@ export function Setup() {
           <Card className="p-6">
             <form onSubmit={saveCredentials} className="space-y-4">
               <div>
-                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Step 1 · Google OAuth client</p>
-                <p className="mt-1 text-xs text-zinc-500">
+                <p className="text-sm font-medium text-stone-900 dark:text-stone-100">Step 1 · Google OAuth client</p>
+                <p className="mt-1 text-xs text-stone-500">
                   In the Google Cloud console (APIs &amp; Services → Credentials) create an{" "}
                   <strong>OAuth client ID</strong> of type <strong>Web application</strong>, enable the{" "}
                   <strong>Google Drive API</strong>, and add this authorized redirect URI:
                 </p>
-                <code className="mt-2 block break-all rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                <code className="mt-2 block break-all rounded-md border border-stone-200 bg-stone-50 px-2.5 py-1.5 text-xs text-stone-700 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300">
                   {status.redirect_uri}
                 </code>
               </div>
@@ -156,7 +156,7 @@ export function Setup() {
                   placeholder="GOCSPX-…"
                 />
               </Field>
-              <p className="text-xs text-zinc-500">
+              <p className="text-xs text-stone-500">
                 Stored only on this server (gitignored file) — never in the shared Drive data.
               </p>
               <Button type="submit" loading={saving} className="w-full">
@@ -167,8 +167,8 @@ export function Setup() {
         ) : (
           <Card className="p-6 text-center">
             <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500" aria-hidden />
-            <p className="mt-3 text-sm font-medium text-zinc-900 dark:text-zinc-100">Step 2 · Authorize Google Drive</p>
-            <p className="mt-1 text-sm text-zinc-500">
+            <p className="mt-3 text-sm font-medium text-stone-900 dark:text-stone-100">Step 2 · Authorize Google Drive</p>
+            <p className="mt-1 text-sm text-stone-500">
               Sign in with the Google account that owns the team's Drive folders. This organizer connection is
               shared by the whole team and only needs to happen once.
             </p>

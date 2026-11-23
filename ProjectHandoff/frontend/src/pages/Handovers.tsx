@@ -63,8 +63,8 @@ export function Handovers() {
               onClick={() => setStatusFilter(status)}
               className={`rounded-full px-3 py-1.5 text-xs font-medium capitalize transition ${
                 statusFilter === status
-                  ? "bg-indigo-600 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                  ? "bg-brand-600 text-white"
+                  : "bg-stone-100 text-stone-600 hover:bg-stone-200 dark:bg-stone-800 dark:text-stone-300 dark:hover:bg-stone-700"
               }`}
             >
               {status.replace(/_/g, " ")}
@@ -102,19 +102,19 @@ export function Handovers() {
       ) : (
         <div className="space-y-3">
           {filtered.map((handover) => (
-            <Link key={handover.handover_id} to={`/handovers/${handover.handover_id}`} className="card-base block p-4 transition hover:border-indigo-300 dark:hover:border-indigo-700">
+            <Link key={handover.handover_id} to={`/handovers/${handover.handover_id}`} className="card-base block p-4 transition hover:border-brand-300 dark:hover:border-brand-700">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2 text-sm">
-                  <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">{handover.task_title || "Task handover"}</span>
+                  <span className="truncate font-medium text-stone-900 dark:text-stone-100">{handover.task_title || "Task handover"}</span>
                   <Badge value={handover.status} className="shrink-0" />
                 </div>
-                <span className="text-xs text-zinc-400">sent {timeAgo(handover.created_at)}</span>
+                <span className="text-xs text-stone-400">sent {timeAgo(handover.created_at)}</span>
               </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-stone-600 dark:text-stone-300">
                 <span className="font-medium">{handover.previous_owner_name}</span>
-                <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden />
+                <ArrowRight className="h-3.5 w-3.5 text-stone-400" aria-hidden />
                 <span className="font-medium">{handover.proposed_owner_name}</span>
-                {handover.deadline && <span className="text-xs text-zinc-500">· target {formatDate(handover.deadline)}</span>}
+                {handover.deadline && <span className="text-xs text-stone-500">· target {formatDate(handover.deadline)}</span>}
               </div>
             </Link>
           ))}

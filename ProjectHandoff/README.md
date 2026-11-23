@@ -260,6 +260,11 @@ When you can't carry a task anymore (graduating, exams, switching teams):
 
 Any small server works (the app is one process + Drive doing the heavy lifting): run the backend with uvicorn behind a reverse proxy (nginx/Caddy) on HTTPS, serve the frontend either from `npm run build` output with any static file server, or keep `npm run dev`/`preview` on a private host. Set `PH_FRONTEND_URL` and `PH_CORS_ORIGINS` to the frontend's real URL, and register the backend's `/api/drive/oauth/callback` as the OAuth redirect URI (Step 4 above).
 
+Ready-made setups live in [`deploy/`](deploy/):
+
+- [`deploy/local/`](deploy/local/) — run on your own machine and publish it through a free tunnel (Tailscale Funnel, ngrok, or a Cloudflare Quick Tunnel). No credit card required.
+- [`deploy/oracle/`](deploy/oracle/) — Oracle Cloud Always Free VM with Caddy and automatic HTTPS, for an always-on link.
+
 ## Tests
 
 ```bash

@@ -1,0 +1,25 @@
+[Unit]
+Description=ProjectHandoff API (FastAPI)
+Documentation=https://github.com/jagratdevx/projecthandoff
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__RUN_USER__
+Group=__RUN_USER__
+WorkingDirectory=__APP_DIR__/backend
+EnvironmentFile=__APP_DIR__/.env
+ExecStart=__APP_DIR__/backend/.venv/bin/python -m uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=__APP_DIR__/.tokens __APP_DIR__/.cache __APP_DIR__/data
+
+[Install]
+WantedBy=multi-user.target

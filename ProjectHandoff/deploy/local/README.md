@@ -46,10 +46,12 @@ TUNNEL=cloudflare ./deploy/local/start.sh
 NGROK_DOMAIN=my-club.ngrok-free.app TUNNEL=ngrok ./deploy/local/start.sh
 ```
 
-The script builds the frontend if needed, starts FastAPI on `127.0.0.1:8000`
-and Vite's preview server on `127.0.0.1:5173`, waits for both to answer, opens
-the tunnel, and prints the URLs plus the Google OAuth values to register.
-Ctrl-C stops everything.
+The script builds the frontend if needed (it rebuilds automatically when
+`src/`, `index.html` or the Tailwind config are newer than the build; force it
+with `REBUILD=1`), starts FastAPI on `127.0.0.1:8000` and Vite's preview server
+on `127.0.0.1:5173`, waits for both to answer, opens the tunnel, and prints the
+URLs plus the Google OAuth values to register. Ctrl-C stops everything, including
+the tunnel and `caffeinate`.
 
 Everything is served from **one origin**: the preview server serves the built
 React app and proxies `/api` to the backend, so the tunnel only exposes one

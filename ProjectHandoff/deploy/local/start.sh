@@ -30,10 +30,14 @@ LOG_DIR="${TMPDIR:-/tmp}/projecthandoff"
 mkdir -p "$LOG_DIR"
 
 PIDS=()
+TUNNEL_URL=""
 cleanup() {
   trap - EXIT INT TERM
   echo
   echo "Shutting down…"
+  if [ "${TUNNEL:-none}" = "tailscale" ]; then
+    tailscale funnel reset >/dev/null 2>&1 || true
+  fi
   for pid in "${PIDS[@]:-}"; do
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
   done
@@ -42,6 +46,7 @@ cleanup() {
     [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
   done
   exec 2>/dev/null
+  exit 0
 }
 trap cleanup EXIT INT TERM
 
@@ -61,16 +66,18 @@ wait_for_http() { # url seconds
 }
 
 # ---------------------------------------------------------------- tunnel URL
+# Each starter records the public URL in TUNNEL_URL (never via $(...) — that
+# would run the function in a subshell and lose the PID we need to clean up).
 start_cloudflare() {
   command -v cloudflared >/dev/null || die "cloudflared not installed. Run: brew install cloudflared"
   local log="$LOG_DIR/cloudflared.log"
   : >"$log"
   cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$FRONTEND_PORT" >"$log" 2>&1 &
   PIDS+=("$!")
-  local i url
+  local i
   for ((i = 0; i < 40; i++)); do
-    url="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true)"
-    [ -n "$url" ] && { echo "$url"; return 0; }
+    TUNNEL_URL="$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true)"
+    [ -n "$TUNNEL_URL" ] && return 0
     sleep 1
   done
   tail -20 "$log" >&2
@@ -83,11 +90,11 @@ start_ngrok() {
   [ -n "${NGROK_DOMAIN:-}" ] && args+=(--url "$NGROK_DOMAIN")
   ngrok "${args[@]}" >"$LOG_DIR/ngrok.log" 2>&1 &
   PIDS+=("$!")
-  local i url
+  local i
   for ((i = 0; i < 30; i++)); do
-    url="$(curl -fsS --max-time 2 http://127.0.0.1:4040/api/tunnels 2>/dev/null |
+    TUNNEL_URL="$(curl -fsS --max-time 2 http://127.0.0.1:4040/api/tunnels 2>/dev/null |
       python3 -c 'import json,sys;d=json.load(sys.stdin);print(next((t["public_url"] for t in d.get("tunnels",[]) if t["public_url"].startswith("https")),""))' 2>/dev/null || true)"
-    [ -n "$url" ] && { echo "$url"; return 0; }
+    [ -n "$TUNNEL_URL" ] && return 0
     sleep 1
   done
   die "ngrok did not report a URL (see $LOG_DIR/ngrok.log)"
@@ -103,12 +110,13 @@ print(f"https://{name}")'
 
 if [ -z "$PUBLIC_URL" ]; then
   case "$TUNNEL" in
-    tailscale) PUBLIC_URL="$(tailscale_url)" ;;
-    cloudflare) PUBLIC_URL="$(start_cloudflare)" ;;
-    ngrok) PUBLIC_URL="$(start_ngrok)" ;;
+    tailscale) TUNNEL_URL="$(tailscale_url)" ;;
+    cloudflare) start_cloudflare ;;
+    ngrok) start_ngrok ;;
     none) ;;
     *) die "Unknown TUNNEL=$TUNNEL (use tailscale, cloudflare, ngrok or none)" ;;
   esac
+  PUBLIC_URL="$TUNNEL_URL"
 fi
 
 # ------------------------------------------------------------ backend config
@@ -137,9 +145,16 @@ else
 fi
 
 # ------------------------------------------------------------------ frontend
-if [ ! -f "$FRONTEND_DIR/dist/index.html" ]; then
-  say "Building frontend (first run only)"
-  (cd "$FRONTEND_DIR" && npm install --silent && npm run build)
+STALE=""
+if [ -f "$FRONTEND_DIR/dist/index.html" ]; then
+  STALE="$(find "$FRONTEND_DIR/src" "$FRONTEND_DIR/index.html" "$FRONTEND_DIR/tailwind.config.js" \
+    -newer "$FRONTEND_DIR/dist/index.html" -print -quit 2>/dev/null || true)"
+fi
+
+if [ "${REBUILD:-0}" = "1" ] || [ ! -f "$FRONTEND_DIR/dist/index.html" ] || [ -n "$STALE" ]; then
+  say "Building frontend"
+  [ -d "$FRONTEND_DIR/node_modules" ] || (cd "$FRONTEND_DIR" && npm ci --silent --no-audit --no-fund)
+  (cd "$FRONTEND_DIR" && npm run build)
 fi
 
 if listening "$FRONTEND_PORT"; then
@@ -171,8 +186,9 @@ fi
 # --------------------------------------------------------------------- ready
 say "ProjectHandoff is running"
 echo "  Local:   http://localhost:$FRONTEND_PORT"
-[ -n "$PUBLIC_URL" ] && echo "  Public:  $PUBLIC_URL"
-[ -n "$PUBLIC_URL" ] && cat <<EOF
+if [ -n "$PUBLIC_URL" ]; then
+  echo "  Public:  $PUBLIC_URL"
+  cat <<EOF
 
 Register these in Google Cloud → APIs & Services → Credentials → your OAuth client:
   Authorized JavaScript origin:  $PUBLIC_URL
@@ -182,7 +198,9 @@ Register these in Google Cloud → APIs & Services → Credentials → your OAut
 Logs: $LOG_DIR/{backend,frontend}.log
 Press Ctrl-C to stop everything.
 EOF
-[ -z "$PUBLIC_URL" ] && echo "  Logs:    $LOG_DIR"
+else
+  echo "  Logs:    $LOG_DIR"
+fi
 
 # Stay in the foreground so Ctrl-C tears the stack down. (A one-second sleep
 # lets bash run the traps promptly; macOS ships bash 3.2, which has no `wait -n`.)

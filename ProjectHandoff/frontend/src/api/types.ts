@@ -1,4 +1,5 @@
-export type Role = "owner" | "admin" | "coordinator" | "member";
+export type Role = "owner" | "admin" | "council" | "teacher" | "coordinator" | "member";
+export type SubteamRole = "coordinator" | "volunteer";
 export type TaskStatus = "Not Started" | "In Progress" | "Blocked" | "Under Review" | "Completed";
 export type Priority = "Low" | "Medium" | "High" | "Critical";
 export type ProjectStatus = "Planning" | "Active" | "On Hold" | "Completed" | "Archived";
@@ -13,6 +14,7 @@ export interface User {
   team_id: string;
   joined_at: string;
   status: "active" | "inactive";
+  subteams?: Array<{ subteam_id: string; name: string; role: SubteamRole }>;
 }
 
 export interface Team {
@@ -24,6 +26,48 @@ export interface Team {
   status: string;
   drive_folder_id?: string;
   drive_folder_url?: string;
+}
+
+/** A user's membership in a team, including completed (archived) events. */
+export interface TeamMembership {
+  team_id: string;
+  name: string;
+  description: string;
+  status: string;
+  role: Role;
+  state: "active" | "observer" | "removed";
+  is_current: boolean;
+  joined_at: string;
+}
+
+/** Archived-team overview returned by GET /api/archive/{team_id}/summary. */
+export interface ArchiveSummary {
+  team: Pick<Team, "team_id" | "name" | "description" | "status">;
+  counts: Record<string, number>;
+}
+
+/** GET/POST/DELETE /api/teams/{id}/subteams */
+export interface Subteam {
+  subteam_id: string;
+  team_id: string;
+  name: string;
+  description: string;
+  folder_id: string;
+  folder_url: string | null;
+  created_at: string;
+  my_role?: SubteamRole | "";
+  member_count?: number;
+  can_manage?: boolean;
+}
+
+export interface SubteamMember {
+  subteam_id: string;
+  user_id: string;
+  role: SubteamRole;
+  added_by: string;
+  added_at: string;
+  name?: string;
+  email?: string;
 }
 
 /** GET /api/teams/{id}/drive/status */
@@ -48,9 +92,17 @@ export interface Project {
   priority: Priority;
   created_at: string;
   updated_at: string;
+  subteam_id: string;
+  requirements: string;
   owner_name?: string;
+  subteam_name?: string;
+  /** Present on project detail; members assignable to this project's subteam. */
+  assignable_members?: SubteamMember[];
   progress?: { total: number; completed: number };
 }
+
+/** A team user or a subteam membership enlisted as an assignable project member. */
+export type ProjectMember = Pick<User, "user_id"> & { name?: string; email?: string };
 
 export interface Task {
   task_id: string;
@@ -67,6 +119,8 @@ export interface Task {
   version: string;
   created_at: string;
   updated_at: string;
+  /** Derived from the task's project (or its legacy subteam) by the backend. */
+  subteam_id: string;
   assignee_name?: string;
   task_title?: string;
 }
@@ -97,6 +151,9 @@ export interface Handover {
   task_title?: string;
   previous_owner_name?: string;
   proposed_owner_name?: string;
+  subteam_id?: string;
+  subteam_name?: string;
+  can_approve?: boolean;
 }
 
 export interface Event {
@@ -134,6 +191,9 @@ export interface Activity {
   description: string;
   timestamp: string;
   user_name?: string;
+  subteam_id?: string;
+  /** "main" or "subteam" — archived feeds separate the two sources. */
+  source?: string;
 }
 
 export interface Attachment {
@@ -155,6 +215,8 @@ export interface Invitation {
   status: "pending" | "accepted" | "revoked" | "expired";
   token?: string;
   invite_url?: string;
+  subteam_id?: string;
+  subteam_role?: SubteamRole;
 }
 
 export interface DashboardData {

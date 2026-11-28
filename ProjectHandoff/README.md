@@ -28,6 +28,12 @@ Most apps put your data in someone else's database and give you an export button
 ## Features
 
 - **Accounts & teams** — register, log in, create a team, invite members via single-use 7-day invite links (email must match on registration), role management (owner / admin / coordinator / member).
+- **Subteams** — admins can create uniquely named groups (e.g. Design, Logistics) from the **Team → Subteams** tab. Each one gets a human-readable folder inside the team's Drive folder, so a teacher browsing Drive sees names instead of IDs. Removing a subteam keeps its folder and files.
+- **Subteam roles** — invite links carry a coordinator or volunteer role for a specific subteam, and admins/coordinators can change roles after someone joins. One person can belong to several subteams with different roles.
+- **Subteam-owned projects** — overseers create projects with a dedicated requirements brief and assign each project to one subteam. Volunteers see only their subteam's projects; coordinators manage their own subteam and assign its tasks to that subteam's members. Overseers also have a global filtered Projects view.
+- **Council & teachers** — `council` and `teacher` roles have full read/write access alongside owners and admins; teachers can promote others. Subteam coordinators can approve scoped handovers.
+- **Event completion & memories** — an owner or teacher can mark a main team complete. Its logs and Drive files stay readable as memories, but the whole team becomes read-only. Members can then create a new main team.
+- **Account reset** — Settings has a guarded reset that detaches an account from teams if it gets into a bad state, without deleting its history or files.
 - **Bring-your-own Drive, per team** — at team creation the creator pastes their *own* Google OAuth client and connects their *own* Google account once; the team's folder link pins all the team's files and data tables inside their Drive, and every member gets writer access automatically (revoked when they're removed). Members never see Google anything — they just log in. Multi-tenant ready: every team owns its credentials, its folder and its data.
 - **Projects** — list/create/archive projects with owners, priorities and progress.
 - **Tasks** — full task lifecycle (Not Started → In Progress → Blocked → Under Review → Completed), assignees, deadlines, priorities, version-stamped updates, comments, attachments.
@@ -308,6 +314,7 @@ All persistent data is CSV text (RFC-4180, UTF-8, header row, ISO-8601 timestamp
 ```
 <root>/TeamData/
 │   users.csv  teams.csv  credentials.csv  invitations.csv  activity.csv
+│   team_memberships.csv                      # per-team roles/state, one account can have many
 <root>/Backups/global/{table}/…          # rotating backups after every write
 ```
 
@@ -316,14 +323,19 @@ All persistent data is CSV text (RFC-4180, UTF-8, header row, ISO-8601 timestamp
 ```
 <team folder>/AppData/                   # per-team CSV tables (the app's data)
 │   projects.csv  events.csv  departments.csv  department_members.csv
-│   tasks.csv  handovers.csv  comments.csv  attachments.csv
+│   subteams.csv  subteam_members.csv  subteam_activity.csv
+│   activity_log.csv  tasks.csv  handovers.csv  comments.csv  attachments.csv
 <team folder>/Files/…                    # team-level uploads
 <team folder>/Projects/{project_id}/files/…
 <team folder>/Events/{event_id}/files/…
+<team folder>/Subteams/{name}/…          # human-readable subteam folders
 <team folder>/Backups/{table}/…          # rotating per-table backups
+<team folder>/Index/                     # friendly shortcuts to project folders
 ```
 
 Teams without a linked folder keep their data under `<root>/TeamData/{team_id}/…` (legacy layout). Writes are serialized per (team, table) with per-scope asyncio locks plus optimistic concurrency (read-revise-write with revision checks, bounded retry) — safe under FastAPI's concurrent request handling. Successful reads are cached briefly; the team's CSVs are backed up (rotating, capped by `PH_BACKUP_RETENTION`) on every write, and a corrupted table is auto-recovered from its newest backup.
+
+`activity_log.csv` is a durable mirror of both the main and subteam activity feeds; it is never trimmed by the global 5,000-row cap. Projects carry `subteam_id` and `requirements`; tasks inherit their subteam from the project and may only be assigned to members of that subteam. Existing project files stay in `Projects/{project_id}/files/` — scoping happens in the app and Drive permissions, not by moving folders. When a main team is marked complete, `teams.status` becomes `archived`: all writes are rejected at the storage layer, Drive folder grants become reader-only, and the activity mirror keeps the logs readable as memories. `team_memberships.csv` records each person's per-team role and `active`/`observer`/`removed` state, so one account can create a new main team while still viewing old ones as memories.
 
 ## Security notes
 

@@ -14,6 +14,15 @@ from app.services.activity import (
     log_activity,
 )
 from app.services.csvstore import now_iso, new_id
+from app.services.subteams import (
+    can_manage_subteam,
+    can_view_all,
+    coordinator_of,
+    get_subteam,
+    has_full_access,
+    members_for,
+    visible_subteam_ids,
+)
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 comments_router = APIRouter(prefix="/api/tasks", tags=["comments"])
@@ -28,15 +37,32 @@ async def _get_task(db: DbDep, user: CurrentUser, task_id: str) -> dict:
     return task
 
 
-def _can_edit_task(user: dict, task: dict, coordinator_of: set[str]) -> bool:
-    if user["role"] in ("owner", "admin"):
+async def _effective_subteam(db: DbDep, team_id: str, task: dict, projects: dict | None = None) -> str:
+    if projects is None:
+        projects = {p.get("project_id", ""): p for p in await db.query("projects", team_id)}
+    project = projects.get(task.get("project_id", ""), {})
+    return project.get("subteam_id", "") or task.get("subteam_id", "")
+
+
+def _can_edit_task(user: dict, task: dict, coordinators: set[str], subteam_id: str = "") -> bool:
+    if has_full_access(user):
         return True
-    if task.get("assigned_to") == user["user_id"]:
+    if subteam_id and subteam_id in coordinators:
         return True
-    if task.get("created_by") == user["user_id"]:
+    if task.get("assigned_to") == user["user_id"] or task.get("created_by") == user["user_id"]:
         return True
     dept = task.get("department_id", "")
-    return bool(dept) and dept in coordinator_of
+    return bool(dept) and dept in coordinators
+
+
+async def _require_task_visible(db: DbDep, user: dict, team_id: str, task: dict) -> None:
+    subteam_id = await _effective_subteam(db, team_id, task)
+    if not subteam_id:
+        # Legacy unscoped tasks keep their original team-wide visibility.
+        return
+    allowed = await visible_subteam_ids(db, user, team_id)
+    if allowed is not None and subteam_id not in allowed:
+        raise HTTPException(status_code=404, detail="Task not found")
 
 
 async def _validate_refs(db: DbDep, team_id: str, payload: TaskCreateIn | TaskUpdateIn) -> None:
@@ -54,7 +80,12 @@ async def _validate_refs(db: DbDep, team_id: str, payload: TaskCreateIn | TaskUp
             raise HTTPException(status_code=400, detail=f"{label} not found in your team")
 
 
-async def _validate_assignee(db: DbDep, team_id: str, user_id: str) -> None:
+async def _validate_assignee(db: DbDep, team_id: str, user_id: str, subteam_id: str = "") -> None:
+    if subteam_id:
+        members = await members_for(db, team_id, subteam_id)
+        if not any(row.get("user_id") == user_id for row in members):
+            raise HTTPException(status_code=400, detail="Assignee must be a member of this subteam")
+        return
     users = await db.query("users")
     if not any(u.get("user_id") == user_id and u.get("team_id") == team_id and u.get("status") == "active" for u in users):
         raise HTTPException(status_code=400, detail="Assignee must be an active member of your team")
@@ -71,9 +102,22 @@ async def list_tasks(
     status: str = "",
     priority: str = "",
     q: str = "",
+    subteam_id: str = "",
 ) -> list[dict]:
     team_id = require_team(user)
-    tasks = await db.query("tasks", team_id)
+    projects = {p.get("project_id", ""): p for p in await db.query("projects", team_id)}
+    allowed = await visible_subteam_ids(db, user, team_id)
+    tasks = []
+    for task in await db.query("tasks", team_id):
+        effective = await _effective_subteam(db, team_id, task, projects)
+        if effective:
+            if allowed is not None and effective not in allowed:
+                continue
+        if effective and allowed is not None and effective not in allowed:
+            continue
+        if subteam_id and effective != subteam_id:
+            continue
+        tasks.append(task)
     if project_id:
         tasks = [t for t in tasks if t.get("project_id") == project_id]
     if event_id:
@@ -96,8 +140,23 @@ async def list_tasks(
 async def create_task(payload: TaskCreateIn, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     await _validate_refs(db, team_id, payload)
+    project = next(
+        (p for p in await db.query("projects", team_id) if p.get("project_id") == payload.project_id),
+        None,
+    ) if payload.project_id else None
+    project_subteam = project.get("subteam_id", "") if project else ""
+    effective = project_subteam or payload.subteam_id
+    if effective:
+        await _validate_subteam(db, team_id, effective)
+        if not await can_manage_subteam(db, user, team_id, effective):
+            raise HTTPException(status_code=403, detail="Only this subteam's coordinator or an overseer can create tasks for it")
+    elif not has_full_access(user) and await db.query("subteams", team_id):
+        raise HTTPException(status_code=403, detail="Choose a subteam for this task")
+    if payload.subteam_id and project_subteam and payload.subteam_id != project_subteam:
+        raise HTTPException(status_code=400, detail="Task subteam must match the project's subteam")
+
     if payload.assigned_to:
-        await _validate_assignee(db, team_id, payload.assigned_to)
+        await _validate_assignee(db, team_id, payload.assigned_to, effective)
 
     task = {
         "task_id": new_id(),
@@ -114,6 +173,7 @@ async def create_task(payload: TaskCreateIn, user: CurrentUser, db: DbDep) -> di
         "version": "0",
         "created_at": now_iso(),
         "updated_at": now_iso(),
+        "subteam_id": effective,
     }
     await db.insert("tasks", task, team_id)
     if task["project_id"]:
@@ -137,10 +197,16 @@ async def create_task(payload: TaskCreateIn, user: CurrentUser, db: DbDep) -> di
     return task
 
 
+async def _validate_subteam(db: DbDep, team_id: str, subteam_id: str) -> None:
+    if subteam_id and await get_subteam(db, team_id, subteam_id) is None:
+        raise HTTPException(status_code=400, detail="That subteam does not belong to your team")
+
+
 @router.get("/{task_id}")
 async def get_task(task_id: str, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
     comments = [c for c in await db.query("comments", team_id) if c.get("task_id") == task_id]
     comments.sort(key=lambda c: c.get("created_at", ""))
     attachments = [a for a in await db.query("attachments", team_id) if a.get("task_id") == task_id]
@@ -165,17 +231,25 @@ async def get_task(task_id: str, user: CurrentUser, db: DbDep) -> dict:
 async def update_task(task_id: str, payload: TaskUpdateIn, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
     await _validate_refs(db, team_id, payload)
+    subteam_id = await _effective_subteam(db, team_id, task)
     if payload.assigned_to:
-        await _validate_assignee(db, team_id, payload.assigned_to)
+        await _validate_assignee(db, team_id, payload.assigned_to, subteam_id)
 
+    sub_coordinators = await coordinator_of(db, team_id, user["user_id"])
     departments = await db.query("departments", team_id)
-    coordinator_of = {d["department_id"] for d in departments if d.get("coordinator_id") == user["user_id"]}
-    if not _can_edit_task(user, task, coordinator_of):
+    coordinators = sub_coordinators | {
+        d["department_id"] for d in departments if d.get("coordinator_id") == user["user_id"]
+    }
+    if not _can_edit_task(user, task, coordinators, subteam_id):
         raise HTTPException(
             status_code=403,
-            detail="Only the assignee, task creator, department coordinator or team admins can edit this task",
+            detail="Only the assignee, task creator, subteam coordinator or team overseers can edit this task",
         )
+    if payload.assigned_to and payload.assigned_to != task.get("assigned_to", ""):
+        if not (has_full_access(user) or (subteam_id and subteam_id in sub_coordinators)):
+            raise HTTPException(status_code=403, detail="Only a coordinator or overseer can reassign this task")
 
     changes: list[str] = []
     old_assignee = task.get("assigned_to", "")
@@ -223,8 +297,10 @@ async def delete_task(task_id: str, user: CurrentUser, db: DbDep) -> dict:
     require_roles(user, "owner", "admin", "coordinator")
     team_id = require_team(user)
     task = await _get_task(db, user, task_id)
-    if not (user["role"] in ("owner", "admin") or task.get("created_by") == user["user_id"]):
-        raise HTTPException(status_code=403, detail="Only the task creator or team admins can delete this task")
+    await _require_task_visible(db, user, team_id, task)
+    subteam_id = await _effective_subteam(db, team_id, task)
+    if not (has_full_access(user) or (subteam_id and subteam_id in await coordinator_of(db, team_id, user["user_id"])) or task.get("created_by") == user["user_id"]):
+        raise HTTPException(status_code=403, detail="Only the task creator, subteam coordinator or overseers can delete this task")
 
     def fn(rows: list[dict]) -> list[dict]:
         return [row for row in rows if row.get("task_id") != task_id]
@@ -245,7 +321,8 @@ async def delete_task(task_id: str, user: CurrentUser, db: DbDep) -> dict:
 @comments_router.get("/{task_id}/comments")
 async def list_comments(task_id: str, user: CurrentUser, db: DbDep) -> list[dict]:
     team_id = require_team(user)
-    await _get_task(db, user, task_id)
+    task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
     comments = [c for c in await db.query("comments", team_id) if c.get("task_id") == task_id]
     return sorted(comments, key=lambda c: c.get("created_at", ""))
 
@@ -254,6 +331,7 @@ async def list_comments(task_id: str, user: CurrentUser, db: DbDep) -> list[dict
 async def add_comment(task_id: str, payload: CommentIn, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
     comment = {
         "comment_id": new_id(),
         "task_id": task_id,

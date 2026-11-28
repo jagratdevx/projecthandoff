@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Team, User } from "./types";
+import type { Team, TeamMembership, User } from "./types";
 
 const TOKEN_KEY = "ph_token";
 
@@ -269,8 +269,29 @@ export async function downloadAttachment(attachmentId: string, fileName: string)
 // Me endpoint helpers
 // ---------------------------------------------------------------------------
 
-export function fetchMe(): Promise<{ user: User; team: Team | null }> {
+export interface MeResponse {
+  user: User;
+  team: Team | null;
+  subteams?: User["subteams"];
+  teams: TeamMembership[];
+  can_create_team: boolean;
+}
+
+export function fetchMe(): Promise<MeResponse> {
   return api("/api/auth/me");
+}
+
+/** Make another (active or archived) membership the current team. */
+export function switchTeam(teamId: string): Promise<{ ok: boolean; team: Team; state: string }> {
+  return api(`/api/teams/${encodeURIComponent(teamId)}/switch`, { method: "POST" });
+}
+
+/** Complete the current event: archives the team and switches everyone to read-only. */
+export function completeTeam(
+  teamId: string,
+  force = false,
+): Promise<{ ok: boolean; already_archived: boolean; drive_failures: string[] }> {
+  return api(`/api/teams/${encodeURIComponent(teamId)}/complete`, { method: "POST", body: { force } });
 }
 
 export function useMe(): { user: User | null; team: Team | null; loading: boolean } {

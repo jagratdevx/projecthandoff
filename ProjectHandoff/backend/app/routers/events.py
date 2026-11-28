@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.deps import CurrentUser, DbDep, require_roles, require_team
+from app.services.subteams import has_full_access
 from app.schemas.api import (
     DepartmentCreateIn,
     DepartmentMemberIn,
@@ -105,7 +106,7 @@ async def get_event(event_id: str, user: CurrentUser, db: DbDep) -> dict:
 async def update_event(event_id: str, payload: EventUpdateIn, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     event = await _get_event(db, user, event_id)
-    if not (user["role"] in ("owner", "admin") or event.get("owner_id") == user["user_id"]):
+    if not (has_full_access(user) or event.get("owner_id") == user["user_id"]):
         raise HTTPException(status_code=403, detail="Only the event owner or team admins can edit this event")
 
     changes: list[str] = []
@@ -193,7 +194,7 @@ async def update_department(department_id: str, payload: DepartmentUpdateIn, use
     team_id = require_team(user)
     department = await _get_department(db, user, department_id)
     if not (
-        user["role"] in ("owner", "admin")
+        has_full_access(user)
         or department.get("coordinator_id") == user["user_id"]
     ):
         raise HTTPException(status_code=403, detail="Only the coordinator or team admins can edit this department")
@@ -224,7 +225,7 @@ async def add_department_member(department_id: str, payload: DepartmentMemberIn,
     team_id = require_team(user)
     department = await _get_department(db, user, department_id)
     if not (
-        user["role"] in ("owner", "admin")
+        has_full_access(user)
         or department.get("coordinator_id") == user["user_id"]
     ):
         raise HTTPException(status_code=403, detail="Only the coordinator or team admins can add members")
@@ -257,7 +258,7 @@ async def remove_department_member(department_id: str, member_id: str, user: Cur
     team_id = require_team(user)
     department = await _get_department(db, user, department_id)
     if not (
-        user["role"] in ("owner", "admin")
+        has_full_access(user)
         or department.get("coordinator_id") == user["user_id"]
     ):
         raise HTTPException(status_code=403, detail="Only the coordinator or team admins can remove members")

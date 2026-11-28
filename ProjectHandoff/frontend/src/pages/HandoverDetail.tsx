@@ -66,7 +66,8 @@ export function HandoverDetail() {
   const { handover, task, comments, names } = data;
   const isProposedOwner = handover.proposed_owner_id === user?.user_id;
   const isPreviousOwner = handover.previous_owner_id === user?.user_id;
-  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  const isAdmin = ["owner", "admin", "council", "teacher"].includes(user?.role ?? "");
+  const canApprove = isProposedOwner || isAdmin || !!handover.can_approve;
 
   const act = async (path: string, body: Record<string, unknown> | undefined, successMessage: string) => {
     setBusy(true);
@@ -94,13 +95,20 @@ export function HandoverDetail() {
       <PageHeader
         title={task?.title ?? "Task handover"}
         subtitle={`Handover from ${names[handover.previous_owner_id] ?? "Unknown"} to ${names[handover.proposed_owner_id] ?? "Unknown"}`}
-        actions={<Badge value={handover.status} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {handover.subteam_name && <Badge value={handover.subteam_name} />}
+            <Badge value={handover.status} />
+          </div>
+        }
       />
 
-      {handover.status === "pending" && isProposedOwner && (
+      {handover.status === "pending" && canApprove && (
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-800 dark:bg-amber-950/50">
           <p className="flex-1 text-sm text-amber-900 dark:text-amber-200">
-            You have been asked to take over this task. Review the context below before accepting.
+            {isProposedOwner
+              ? "You have been asked to take over this task. Review the context below before accepting."
+              : `You can review this handover${handover.subteam_name ? ` for ${handover.subteam_name}` : ""}. Check the context below before deciding.`}
           </p>
           <Button onClick={() => void act("accept", undefined, "Handover accepted — the task is now yours")} loading={busy}>
             <Check className="h-4 w-4" aria-hidden /> Accept

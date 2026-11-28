@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
+  Archive,
   ArrowLeftRight,
   CalendarDays,
   FolderKanban,
@@ -18,8 +19,9 @@ import {
 import { api } from "../api/client";
 import type { Handover } from "../api/types";
 import { useAuth } from "../state/AuthContext";
+import { useToast } from "../state/ToastContext";
 import { useTheme } from "../hooks/useTheme";
-import { Avatar, Badge } from "./ui";
+import { Avatar, Badge, Select } from "./ui";
 import { SyncIndicator } from "./SyncIndicator";
 
 const NAV_ITEMS = [
@@ -29,17 +31,37 @@ const NAV_ITEMS = [
   { to: "/handovers", label: "Handovers", icon: ArrowLeftRight, badge: true },
   { to: "/events", label: "Events", icon: CalendarDays },
   { to: "/team", label: "Team", icon: Users },
+  { to: "/memories", label: "Memories", icon: Archive },
   { to: "/activity", label: "Activity", icon: History },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 export function Layout() {
-  const { user, team, logout } = useAuth();
+  const { user, team, subteams, teams, switchTeam, logout } = useAuth();
+  const toast = useToast();
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [handoverCount, setHandoverCount] = useState(0);
+  const [switching, setSwitching] = useState(false);
+
+  const activeTeams = teams.filter((item) => item.state !== "removed" && item.status === "active");
+  const memories = teams.filter((item) => item.state !== "removed" && item.status !== "active");
+
+  const handleTeamSwitch = async (teamId: string) => {
+    if (!teamId || teamId === team?.team_id) return;
+    setSwitching(true);
+    try {
+      await switchTeam(teamId);
+      toast.push("success", "Team switched");
+      navigate("/dashboard");
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Could not switch team");
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -73,9 +95,35 @@ export function Layout() {
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-3 px-5 pb-5 pt-6">
         <img src="/logo.png" alt="ProjectHandoff logo" className="h-9 w-9 rounded-xl shadow-sm ring-1 ring-inset ring-black/5" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-semibold tracking-tight text-stone-900 dark:text-stone-50">ProjectHandoff</p>
-          <p className="truncate text-[11px] leading-tight text-stone-500 dark:text-stone-400">{team?.name ?? "No team yet"}</p>
+          {activeTeams.length + memories.length > 0 ? (
+            <Select
+              value={team?.team_id ?? ""}
+              onChange={(event) => void handleTeamSwitch(event.target.value)}
+              disabled={switching}
+              className="-ml-1 mt-0.5 w-full border-0 bg-transparent px-1 py-0 text-[11px] leading-tight text-stone-500 shadow-none dark:text-stone-400"
+              aria-label="Switch team"
+            >
+              <option value="">{team?.name ?? "No team yet"}</option>
+              {activeTeams.map((item) => (
+                <option key={item.team_id} value={item.team_id}>
+                  {item.name}
+                </option>
+              ))}
+              {memories.length > 0 && (
+                <optgroup label="Memories">
+                  {memories.map((item) => (
+                    <option key={item.team_id} value={item.team_id}>
+                      {item.name} (archived)
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </Select>
+          ) : (
+            <p className="truncate text-[11px] leading-tight text-stone-500 dark:text-stone-400">{team?.name ?? "No team yet"}</p>
+          )}
         </div>
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-3" aria-label="Main navigation">
@@ -110,6 +158,24 @@ export function Layout() {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-stone-900 dark:text-stone-100">{user?.name}</p>
             <p className="truncate text-xs text-stone-500 dark:text-stone-400">{user?.email}</p>
+            {subteams.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {subteams.slice(0, 3).map((subteam) => (
+                  <span
+                    key={subteam.subteam_id}
+                    className="max-w-full truncate rounded-full bg-stone-200/70 px-1.5 py-0.5 text-[10px] font-medium text-stone-600 ring-1 ring-inset ring-stone-300/70 dark:bg-stone-800 dark:text-stone-300 dark:ring-stone-700"
+                    title={`${subteam.name} · ${subteam.role}`}
+                  >
+                    {subteam.name} · {subteam.role}
+                  </span>
+                ))}
+                {subteams.length > 3 && (
+                  <span className="rounded-full bg-stone-200/70 px-1.5 py-0.5 text-[10px] text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+                    +{subteams.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {user && <Badge value={user.role} />}
         </div>
@@ -176,6 +242,18 @@ export function Layout() {
           </button>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-10">
+          {team && team.status !== "active" && (
+            <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+              <Archive className="h-4 w-4 shrink-0" aria-hidden />
+              <p className="min-w-0 flex-1">
+                <strong className="font-semibold">{team.name}</strong> is complete and read-only. Switch to an active
+                team in the sidebar, or browse the archive.
+              </p>
+              <Link to="/memories" className="font-medium underline underline-offset-2 hover:no-underline">
+                Open memories
+              </Link>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

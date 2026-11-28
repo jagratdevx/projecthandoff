@@ -9,6 +9,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.config import Settings
 from app.security import verify_token
 from app.services.csvstore import CsvStore
+from app.services.subteams import has_full_access
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -86,6 +87,18 @@ def require_team(user: dict) -> str:
 
 
 def require_roles(user: dict, *roles: str) -> dict:
+    if not has_full_access(user) and user.get("role") not in roles:
+        raise HTTPException(status_code=403, detail="Insufficient permissions for this action")
+    return user
+
+
+def require_full_access(user: dict) -> dict:
+    if not has_full_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions for this action")
+    return user
+
+
+def require_exact_roles(user: dict, *roles: str) -> dict:
     if user.get("role") not in roles:
         raise HTTPException(status_code=403, detail="Insufficient permissions for this action")
     return user

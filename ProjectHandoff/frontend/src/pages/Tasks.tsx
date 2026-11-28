@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Project, Task } from "../api/types";
 import { useResource } from "../hooks/useResource";
 import { useMembers } from "../hooks/useMembers";
+import { useSubteamMembers } from "../hooks/useSubteamMembers";
 import { useAuth } from "../state/AuthContext";
 import { useToast } from "../state/ToastContext";
 import {
@@ -68,6 +69,11 @@ export function Tasks() {
 
   const { data: tasks, loading, error, reload } = useResource<Task[]>(() => api(queryPart), [queryPart], 15000);
   const { data: projects } = useResource<Project[]>(() => api("/api/projects"), [], 60000);
+  // Projects are already scoped by the backend; assignees come from the
+  // selected project's subteam so the server never rejects the selection.
+  const selectedSubteamId = projects?.find((p) => p.project_id === form.project_id)?.subteam_id ?? "";
+  const { members: subteamAssignees } = useSubteamMembers(selectedSubteamId || null);
+  const assignable = selectedSubteamId ? subteamAssignees : members;
 
   const projectName = (id: string) => projects?.find((p) => p.project_id === id)?.name;
 
@@ -214,8 +220,8 @@ export function Tasks() {
             <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Project">
-              <Select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value })}>
+            <Field label="Project" hint="Only projects in your subteams are shown.">
+              <Select value={form.project_id} onChange={(e) => setForm({ ...form, project_id: e.target.value, assigned_to: "" })}>
                 <option value="">None</option>
                 {(projects ?? []).map((p) => (
                   <option key={p.project_id} value={p.project_id}>
@@ -224,10 +230,10 @@ export function Tasks() {
                 ))}
               </Select>
             </Field>
-            <Field label="Assignee">
+            <Field label="Assignee" hint={selectedSubteamId ? "Members of the selected project's subteam only." : undefined}>
               <Select value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}>
                 <option value="">Unassigned</option>
-                {members.map((m) => (
+                {assignable.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
                     {m.name}
                   </option>

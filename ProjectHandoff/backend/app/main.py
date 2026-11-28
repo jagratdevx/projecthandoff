@@ -12,10 +12,12 @@ from fastapi.responses import JSONResponse
 from app.config import PROJECT_ROOT, Settings
 from app.routers import (
     activity as activity_router,
+    archive as archive_router,
     attachments as attachments_router,
     auth as auth_router,
     dashboard as dashboard_router,
     setup as setup_router,
+    subteams as subteams_router,
     sync as sync_router,
     events as events_router,
     handovers as handovers_router,
@@ -28,6 +30,7 @@ from app.services.csvstore import (
     CsvStore,
     NotFoundError,
     StoreError,
+    TeamArchivedError,
     ValidationError,
     now_iso,
 )
@@ -57,6 +60,8 @@ def create_app(settings: Settings | None = None, backend=None, persistent_cache_
     async def lifespan(app: FastAPI):
         try:
             await app.state.db.init()
+            await app.state.db.backfill_membership_data()
+            await app.state.db.backfill_project_scope_data()
             logger.info("Storage initialized (mode=%s)", app.state.backend.mode)
             if app.state.backend.mode == "local":
                 logger.warning(
@@ -139,6 +144,10 @@ def create_app(settings: Settings | None = None, backend=None, persistent_cache_
     async def _invalid(_req: Request, exc: ValidationError) -> JSONResponse:
         return _error(400, str(exc))
 
+    @app.exception_handler(TeamArchivedError)
+    async def _archived(_req: Request, exc: TeamArchivedError) -> JSONResponse:
+        return _error(409, str(exc))
+
     @app.exception_handler(StoreError)
     async def _store(_req: Request, exc: StoreError) -> JSONResponse:
         return _error(500, f"Storage error: {exc}")
@@ -171,6 +180,7 @@ def create_app(settings: Settings | None = None, backend=None, persistent_cache_
     app.include_router(auth_router.router)
     app.include_router(teams_router.router)
     app.include_router(teams_router.invitations_router)
+    app.include_router(subteams_router.router)
     app.include_router(projects_router.router)
     app.include_router(tasks_router.router)
     app.include_router(tasks_router.comments_router)
@@ -179,6 +189,7 @@ def create_app(settings: Settings | None = None, backend=None, persistent_cache_
     app.include_router(events_router.departments_router)
     app.include_router(attachments_router.router)
     app.include_router(activity_router.router)
+    app.include_router(archive_router.router)
     app.include_router(dashboard_router.router)
     app.include_router(sync_router.router)
     app.include_router(setup_router.router)

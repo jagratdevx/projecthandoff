@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeftRight, FileDown, History, Send, Trash2, Upload } from "lucide-react";
 import { api, downloadAttachment } from "../api/client";
-import type { Activity, Attachment, Comment, Handover, Project, Task, TaskStatus, User } from "../api/types";
+import type { Activity, Attachment, Comment, Handover, Project, Subteam, Task, TaskStatus, User } from "../api/types";
 import { useResource } from "../hooks/useResource";
 import { useMembers } from "../hooks/useMembers";
 import { useAuth } from "../state/AuthContext";
@@ -35,6 +35,7 @@ interface TaskDetailData {
 }
 
 interface HandoverForm {
+  subteam_id: string;
   proposed_owner_id: string;
   completed_work: string;
   remaining_work: string;
@@ -47,6 +48,7 @@ interface HandoverForm {
 }
 
 const EMPTY_HANDOVER: HandoverForm = {
+  subteam_id: "",
   proposed_owner_id: "",
   completed_work: "",
   remaining_work: "",
@@ -61,12 +63,17 @@ const EMPTY_HANDOVER: HandoverForm = {
 export function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, team } = useAuth();
   const members = useMembers();
   const toast = useToast();
 
   const { data, loading, error, reload } = useResource<TaskDetailData>(() => api(`/api/tasks/${id}`), [id], 15000);
   const { data: projects } = useResource<Project[]>(() => api("/api/projects"), [], 60000);
+  const { data: subteams } = useResource<Subteam[]>(
+    () => (team ? api(`/api/teams/${team.team_id}/subteams`) : Promise.resolve([])),
+    [team?.team_id],
+    0,
+  );
 
   const [comment, setComment] = useState("");
   const [posting, setPosting] = useState(false);
@@ -158,7 +165,10 @@ export function TaskDetail() {
     setSavingHandover(true);
     setHandoverError(null);
     try {
-      await api("/api/handovers", { method: "POST", body: { ...handoverForm, task_id: task.task_id } });
+      await api("/api/handovers", {
+        method: "POST",
+        body: { ...handoverForm, task_id: task.task_id, subteam_id: handoverForm.subteam_id },
+      });
       toast.push("success", "Handover request sent");
       setHandoverOpen(false);
       setHandoverForm(EMPTY_HANDOVER);
@@ -422,6 +432,19 @@ export function TaskDetail() {
         </p>
         <form onSubmit={createHandover} className="space-y-4">
           {handoverError && <p className="text-sm text-red-600 dark:text-red-400">{handoverError}</p>}
+          <Field label="Subteam" hint="Optional — leave blank to use the task's subteam.">
+            <Select
+              value={handoverForm.subteam_id}
+              onChange={(e) => setHandoverForm({ ...handoverForm, subteam_id: e.target.value })}
+            >
+              <option value="">Main team</option>
+              {(subteams ?? []).map((subteam) => (
+                <option key={subteam.subteam_id} value={subteam.subteam_id}>
+                  {subteam.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Proposed new owner">
             <Select required value={handoverForm.proposed_owner_id} onChange={(e) => setHandoverForm({ ...handoverForm, proposed_owner_id: e.target.value })}>
               <option value="">Select a team member…</option>

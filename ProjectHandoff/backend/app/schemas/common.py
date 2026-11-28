@@ -4,7 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Role = Literal["owner", "admin", "coordinator", "member"]
+Role = Literal["owner", "admin", "council", "teacher", "coordinator", "member"]
+SubteamRole = Literal["coordinator", "volunteer"]
 UserStatus = Literal["active", "inactive"]
 TeamStatus = Literal["active", "archived"]
 ProjectStatus = Literal["Planning", "Active", "On Hold", "Completed", "Archived"]
@@ -49,6 +50,8 @@ class ProjectOut(BaseModel):
     priority: Priority = "Medium"
     created_at: str = ""
     updated_at: str = ""
+    subteam_id: str = ""
+    requirements: str = ""
 
 
 class TaskOut(BaseModel):
@@ -66,6 +69,7 @@ class TaskOut(BaseModel):
     version: str = "0"
     created_at: str = ""
     updated_at: str = ""
+    subteam_id: str = ""
 
 
 class HandoverOut(BaseModel):

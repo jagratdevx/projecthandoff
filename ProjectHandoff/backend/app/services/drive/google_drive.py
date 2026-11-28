@@ -510,7 +510,7 @@ class GoogleDriveBackend(DriveBackend):
             first, second = parts[0], parts[1]
             if first == "TeamData" and not second.endswith(".csv") and second != "global":
                 team_id = second
-            elif first in ("Projects", "Events", "Backups") and second != "global":
+            elif first in ("Projects", "Events", "Backups", "Subteams") and second != "global":
                 team_id = second
 
         if not team_id:
@@ -540,6 +540,7 @@ class GoogleDriveBackend(DriveBackend):
             Projects/{tid}/{pid}/files/…    -> <anchor>/Projects/{pid}/files/…
             Events/{tid}/{eid}/files/…      -> <anchor>/Events/{eid}/files/…
             Backups/{tid}/{table}/…         -> <anchor>/Backups/{table}/…
+            Subteams/{tid}/{name}/…         -> <anchor>/Subteams/{name}/…
         """
         parts = [p for p in path.split("/") if p]
         rest = parts[2:]
@@ -548,6 +549,8 @@ class GoogleDriveBackend(DriveBackend):
             return anchor + "/" + ("/".join(["Files"] + rest[1:] if rest and rest[0] == "files" else ["AppData"] + rest))
         if parts[0] == "Backups":
             return anchor + "/" + "/".join(["Backups"] + rest)
+        if parts[0] == "Subteams":
+            return anchor + "/" + "/".join(["Subteams"] + rest)
         return anchor + "/" + "/".join([parts[0]] + rest)  # Projects / Events — drop the team_id level
 
     # ------------------------------------------------------------------ #

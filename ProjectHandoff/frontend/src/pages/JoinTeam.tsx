@@ -10,6 +10,9 @@ interface ValidateResponse {
   team_id: string;
   role: string;
   email: string;
+  subteam_id?: string;
+  subteam_name?: string;
+  subteam_role?: string;
 }
 
 export function JoinTeam() {
@@ -71,8 +74,14 @@ export function JoinTeam() {
           <form onSubmit={submit} className="space-y-4">
             <p className="rounded-xl bg-brand-50 px-3.5 py-3 text-sm leading-relaxed text-brand-900 ring-1 ring-inset ring-brand-600/10 dark:bg-brand-500/10 dark:text-brand-200 dark:ring-brand-400/20">
               You have been invited to join <strong className="font-semibold">{validation.team_name}</strong> as{" "}
-              <strong className="font-semibold">{validation.role}</strong> with the email{" "}
-              <strong className="font-semibold">{validation.email}</strong>.
+              <strong className="font-semibold">{validation.role}</strong>
+              {validation.subteam_name && (
+                <>
+                  , <strong className="font-semibold">{validation.subteam_role ?? "volunteer"}</strong> in{" "}
+                  <strong className="font-semibold">{validation.subteam_name}</strong>
+                </>
+              )}{" "}
+              with the email <strong className="font-semibold">{validation.email}</strong>.
             </p>
             {error && <ErrorNote message={error} />}
             <Field label="Your name">

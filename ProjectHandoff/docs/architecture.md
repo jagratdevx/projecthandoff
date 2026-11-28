@@ -39,14 +39,28 @@ Drive backend** — CSV tables for structured data, regular files for uploads.
 Two scopes:
 
 - **Global** — `users.csv`, `teams.csv`, `credentials.csv` (password hashes),
-  `invitations.csv`, `activity.csv` → `TeamData/`
-- **Team** — `projects`, `events`, `departments`, `department_members`, `tasks`,
-  `handovers`, `comments`, `attachments` → `TeamData/{team_id}/`
+  `invitations.csv`, `activity.csv`, `team_memberships.csv` → `TeamData/`
+- **Team** — `projects`, `events`, `departments`, `department_members`, `subteams`,
+  `subteam_members`, `subteam_activity`, `activity_log`, `tasks`, `handovers`,
+  `comments`, `attachments` → `TeamData/{team_id}/`
 
 Beyond the product spec, two pragmatic additions: `credentials.csv`
 (auth decoupled from the public `users` table) and `department_members.csv`
 (many-to-many between departments and users; composite key, no id column —
-explicitly excluded from id validation).
+explicitly excluded from id validation). Subteams are a team-scoped CSV table
+with a case-insensitive unique name; each one also gets a readable Drive folder
+at `Subteams/{name}/` inside the team folder. Projects append `subteam_id` and
+`requirements`; tasks derive their scope from the project and restrict assignees
+to active `subteam_members`. Uploads keep the existing `Projects/{project_id}/files`
+Drive path so no folders are orphaned.
+
+`team_memberships.csv` is authoritative for per-team role and state
+(`active`/`observer`/`removed`); `users.team_id/role` are mirrors of the current
+context so existing single-team endpoints keep working. `activity_log.csv` mirrors
+main and subteam activity entries with a `source` column and is never trimmed by
+the global activity cap. Completing a team flips `teams.status` to `archived`;
+`CsvStore.mutate` then rejects team-scoped writes, Drive grants become reader-only,
+and the archive APIs read `activity_log.csv` for durable memories.
 
 ### Serialization & correctness
 

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .common import EventStatus, Priority, ProjectStatus, TaskStatus, Role
+from .common import EventStatus, Priority, ProjectStatus, SubteamRole, TaskStatus, Role
 
 EMAIL_RE = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 
@@ -109,6 +109,8 @@ class MemberUpdateIn(BaseModel):
 class InviteCreateIn(BaseModel):
     email: str = Field(pattern=EMAIL_RE)
     role: Role = "member"
+    subteam_id: str = ""
+    subteam_role: SubteamRole = "volunteer"
 
     @field_validator("role")
     @classmethod
@@ -116,6 +118,19 @@ class InviteCreateIn(BaseModel):
         if v == "owner":
             raise ValueError("Ownership cannot be granted through invitations")
         return v
+
+
+class InviteAcceptIn(BaseModel):
+    invite_token: str = Field(min_length=1)
+
+
+class TeamCompleteIn(BaseModel):
+    force: bool = False
+
+
+class AccountResetIn(BaseModel):
+    email: str = Field(pattern=EMAIL_RE)
+    confirm: bool = False
 
 
 # ----------------------------- projects -----------------------------
@@ -128,6 +143,8 @@ class ProjectCreateIn(BaseModel):
     deadline: str = ""
     priority: Priority = "Medium"
     status: ProjectStatus = "Planning"
+    subteam_id: str = ""
+    requirements: str = Field(default="", max_length=4000)
 
     @field_validator("start_date", "deadline")
     @classmethod
@@ -143,6 +160,8 @@ class ProjectUpdateIn(BaseModel):
     deadline: str | None = None
     priority: Priority | None = None
     status: ProjectStatus | None = None
+    subteam_id: str | None = None
+    requirements: str | None = Field(default=None, max_length=4000)
 
     @field_validator("start_date", "deadline")
     @classmethod
@@ -164,6 +183,7 @@ class TaskCreateIn(BaseModel):
     priority: Priority = "Medium"
     status: TaskStatus = "Not Started"
     deadline: str = ""
+    subteam_id: str = ""
 
     @field_validator("deadline")
     @classmethod
@@ -207,6 +227,7 @@ class HandoverCreateIn(BaseModel):
     relevant_files: str = Field(default="", max_length=1000)
     deadline: str = ""
     notes: str = Field(default="", max_length=2000)
+    subteam_id: str = ""
 
     @field_validator("deadline")
     @classmethod
@@ -271,3 +292,26 @@ class DepartmentUpdateIn(BaseModel):
 
 class DepartmentMemberIn(BaseModel):
     user_id: str = Field(min_length=1)
+
+
+class SubteamCreateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=1000)
+
+
+class SubteamUpdateIn(BaseModel):
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class SubteamMemberIn(BaseModel):
+    user_id: str = Field(min_length=1)
+    role: SubteamRole = "volunteer"
+
+
+class SubteamMemberRoleIn(BaseModel):
+    role: SubteamRole
+
+
+class SubteamInviteIn(BaseModel):
+    email: str = Field(pattern=EMAIL_RE)
+    role: SubteamRole = "volunteer"

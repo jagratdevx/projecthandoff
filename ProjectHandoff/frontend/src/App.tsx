@@ -13,6 +13,8 @@ import { HandoverDetail } from "./pages/HandoverDetail";
 import { Events } from "./pages/Events";
 import { EventDetail } from "./pages/EventDetail";
 import { TeamPage } from "./pages/Team";
+import { SubteamProjects } from "./pages/SubteamProjects";
+import { Memories } from "./pages/Memories";
 import { ActivityPage } from "./pages/Activity";
 import { Settings } from "./pages/Settings";
 import { Login } from "./pages/Login";
@@ -82,6 +84,8 @@ export default function App() {
           <Route path="/events" element={<Events />} />
           <Route path="/events/:id" element={<EventDetail />} />
           <Route path="/team" element={<TeamPage />} />
+          <Route path="/team/subteams/:subteamId/projects" element={<SubteamProjects />} />
+          <Route path="/memories" element={<Memories />} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/settings" element={<Settings />} />
         </Route>

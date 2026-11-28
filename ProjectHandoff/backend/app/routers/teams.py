@@ -7,10 +7,15 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from app.deps import CurrentUser, DbDep, SettingsDep, invalidate_user_cache, require_roles
+from app.deps import (
+    CurrentUser, DbDep, SettingsDep, invalidate_user_cache,
+    require_exact_roles, require_roles,
+)
 from app.schemas.api import (
+    AccountResetIn,
     InviteCreateIn,
     MemberUpdateIn,
+    TeamCompleteIn,
     TeamCreateIn,
     TeamDriveConnectIn,
     TeamDriveFolderIn,
@@ -24,12 +29,24 @@ from app.services.activity import (
     ACTION_MEMBER_LEFT,
     ACTION_ROLE_CHANGED,
     ACTION_TEAM_UPDATED,
+    ACTION_TEAM_COMPLETED,
     log_activity,
 )
 from app.services.csvstore import now_iso, new_id
 from app.services.drive.base import DriveError, NotFoundError
 from app.services.drive.google_drive import GoogleDriveBackend
 from app.services.drive_link import drive_folder_url, extract_drive_folder_id
+from app.services.memberships import (
+    active_memberships,
+    add_team_membership,
+    mark_team_observed,
+    memberships_for_user,
+    remove_team_membership,
+    set_current_membership,
+    set_membership_role,
+    set_membership_state,
+)
+from app.services.subteams import get_subteam
 
 logger = logging.getLogger("projecthandoff")
 
@@ -40,7 +57,8 @@ INVITE_TTL_DAYS = 7
 
 # Team-scoped CSV tables (everything that moves into the team's Drive folder)
 TEAM_TABLES = (
-    "projects", "events", "departments", "department_members",
+    "projects", "events", "departments", "department_members", "subteams",
+    "subteam_members", "subteam_activity",
     "tasks", "handovers", "comments", "attachments",
 )
 
@@ -202,6 +220,7 @@ async def team_drive_oauth_callback(
     if not isinstance(backend, GoogleDriveBackend):
         return RedirectResponse(f"{fail}&reason=mode")
 
+    await request.app.state.db.assert_writable(team_id)
     client = backend.team_client(team_id)
     if client is None:
         return RedirectResponse(f"{fail}&reason=no_client")
@@ -232,6 +251,7 @@ async def connect_team_drive(team_id: str, payload: TeamDriveConnectIn, user: Cu
     require_roles(user, "owner", "admin")
     if user.get("team_id") != team_id:
         raise HTTPException(status_code=404, detail="Team not found")
+    await db.assert_writable(team_id)
     backend = _drive_backend(db.backend)
 
     redirect_uri = payload.redirect_uri.strip() or settings.team_oauth_redirect_uri
@@ -302,6 +322,7 @@ async def link_team_drive_folder(team_id: str, payload: TeamDriveFolderIn, user:
     require_roles(user, "owner", "admin")
     if user.get("team_id") != team_id:
         raise HTTPException(status_code=404, detail="Team not found")
+    await db.assert_writable(team_id)
     backend = db.backend
     if backend.mode == "drive":
         backend = _drive_backend(backend)
@@ -350,8 +371,8 @@ def _set_folder(rows: list[dict], team_id: str, drive_cols: dict) -> list[dict]:
 
 @router.post("", status_code=201)
 async def create_team(payload: TeamCreateIn, user: CurrentUser, db: DbDep, request: Request, settings: SettingsDep) -> dict:
-    if user.get("team_id"):
-        raise HTTPException(status_code=409, detail="You already belong to a team")
+    if await active_memberships(db, user["user_id"]):
+        raise HTTPException(status_code=409, detail="You already belong to an active team")
 
     team_id = new_id()
     team = {
@@ -394,6 +415,12 @@ async def create_team(payload: TeamCreateIn, user: CurrentUser, db: DbDep, reque
 
     await db.mutate("teams", add_team)
     await db.mutate("users", set_user)
+    await add_team_membership(
+        db,
+        user_id=user["user_id"], team_id=team_id, email=user.get("email", ""),
+        role="owner", state="active", is_current=True,
+    )
+    await set_current_membership(db, user["user_id"], team_id)
     await db.ensure_team(team_id)
     invalidate_user_cache(user["user_id"])
     await log_activity(
@@ -417,6 +444,117 @@ async def my_team(user: CurrentUser, db: DbDep) -> dict:
     team = next((t for t in teams if t.get("team_id") == team_id), None)
     users = [u for u in await db.query("users") if u.get("team_id") == team_id]
     return {"team": team, "members": users}
+
+
+@router.get("/memories")
+async def team_memories(user: CurrentUser, db: DbDep) -> list[dict]:
+    rows = await memberships_for_user(db, user["user_id"])
+    teams = {t.get("team_id", ""): t for t in await db.query("teams")}
+    result = []
+    for row in rows:
+        team = teams.get(row.get("team_id", ""))
+        if not team or team.get("status") != "archived" or row.get("state") == "removed":
+            continue
+        result.append({
+            "team_id": row["team_id"],
+            "name": team.get("name", ""),
+            "description": team.get("description", ""),
+            "role": row.get("role", ""),
+            "state": row.get("state", ""),
+            "is_current": row.get("is_current") == "1",
+            "joined_at": row.get("joined_at", ""),
+        })
+    return result
+
+
+@router.post("/{team_id}/switch")
+async def switch_team(team_id: str, user: CurrentUser, db: DbDep) -> dict:
+    membership = next(
+        (m for m in await memberships_for_user(db, user["user_id"]) if m.get("team_id") == team_id),
+        None,
+    )
+    if membership is None or membership.get("state") == "removed":
+        raise HTTPException(status_code=404, detail="You are not a member of that team")
+
+    def set_user(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("user_id") == user["user_id"]:
+                row["team_id"] = team_id
+                row["role"] = membership.get("role", "member")
+        return rows
+
+    await db.mutate("users", set_user)
+    await set_current_membership(db, user["user_id"], team_id)
+    invalidate_user_cache(user["user_id"])
+    team = next((t for t in await db.query("teams") if t.get("team_id") == team_id), None)
+    return {"ok": True, "team": team, "state": membership.get("state", "active")}
+
+
+@router.post("/{team_id}/complete")
+async def complete_team(
+    team_id: str, payload: TeamCompleteIn, user: CurrentUser, db: DbDep
+) -> dict:
+    require_exact_roles(user, "owner", "teacher")
+    if user.get("team_id") != team_id:
+        raise HTTPException(status_code=404, detail="Team not found")
+    teams = await db.query("teams")
+    team = next((t for t in teams if t.get("team_id") == team_id), None)
+    if team is None:
+        raise HTTPException(status_code=404, detail="Team not found")
+    if team.get("status") == "archived":
+        return {"ok": True, "already_archived": True, "drive_failures": []}
+
+    def expire_invites(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("team_id") == team_id and row.get("status") == "pending":
+                row["status"] = "expired"
+        return rows
+
+    await db.mutate("invitations", expire_invites)
+    await log_activity(
+        db, team_id=team_id, action=ACTION_TEAM_COMPLETED,
+        description=f"{user['name']} completed the event “{team.get('name', '')}”",
+        user_id=user["user_id"],
+    )
+
+    drive_failures: list[str] = []
+    folder_id = team.get("drive_folder_id", "")
+    if folder_id and isinstance(db.backend, GoogleDriveBackend):
+        members = await memberships_for_user_self(db, team_id)
+        for email in members:
+            try:
+                await db.backend.team_share_folder(team_id, folder_id, email, role="reader")
+            except DriveError as exc:
+                drive_failures.append(f"{email}: {exc}")
+    if drive_failures and not payload.force:
+        raise HTTPException(status_code=502, detail=f"Could not make Drive folders read-only: {'; '.join(drive_failures)}")
+
+    await mark_team_observed(db, team_id)
+
+    def archive(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("team_id") == team_id:
+                row["status"] = "archived"
+        return rows
+
+    await db.mutate("teams", archive)
+    for member in await db.query("users"):
+        if member.get("team_id") == team_id:
+            invalidate_user_cache(member.get("user_id", ""))
+    return {
+        "ok": True,
+        "already_archived": False,
+        "drive_failures": drive_failures,
+    }
+
+
+async def memberships_for_user_self(db: DbDep, team_id: str) -> list[str]:
+    emails = [
+        row.get("email", "")
+        for row in await db.query("team_memberships")
+        if row.get("team_id") == team_id and row.get("state") != "removed" and row.get("email", "")
+    ]
+    return emails
 
 
 @router.patch("/{team_id}")
@@ -486,6 +624,8 @@ async def update_member(team_id: str, member_id: str, payload: MemberUpdateIn, u
         raise HTTPException(status_code=404, detail="Member not found")
 
     await db.mutate("users", fn)
+    if payload.role is not None:
+        await set_membership_role(db, member_id, team_id, payload.role)
     invalidate_user_cache(member_id)
     if payload.role is not None:
         await log_activity(
@@ -520,7 +660,9 @@ async def remove_member(team_id: str, member_id: str, user: CurrentUser, db: DbD
         raise HTTPException(status_code=404, detail="Member not found")
 
     await db.mutate("users", fn)
+    await remove_team_membership(db, member_id, team_id)
     invalidate_user_cache(member_id)
+    await db.assert_writable(team_id)
     team = next((t for t in await db.query("teams") if t.get("team_id") == team_id), None)
     if team and team.get("drive_folder_id"):
         try:
@@ -533,6 +675,45 @@ async def remove_member(team_id: str, member_id: str, user: CurrentUser, db: DbD
     await log_activity(
         db, team_id=team_id, action=ACTION_MEMBER_LEFT,
         description=f"{user['name']} removed {member['name']} from the team", user_id=user["user_id"],
+    )
+    return {"ok": True}
+
+
+@router.post("/{team_id}/members/{member_id}/reset")
+async def reset_member(
+    team_id: str, member_id: str, payload: AccountResetIn, user: CurrentUser, db: DbDep
+) -> dict:
+    require_exact_roles(user, "owner", "teacher")
+    if user.get("team_id") != team_id:
+        raise HTTPException(status_code=404, detail="Team not found")
+    if not payload.confirm:
+        raise HTTPException(status_code=422, detail="Account reset must be confirmed")
+    people = await db.query("users")
+    member = next(
+        (u for u in people if u.get("user_id") == member_id and u.get("team_id") == team_id),
+        None,
+    )
+    if member is None:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if payload.email.lower().strip() != member.get("email", "").lower().strip():
+        raise HTTPException(status_code=400, detail="The email does not match that member")
+    if member.get("role") == "owner":
+        raise HTTPException(status_code=400, detail="The team owner cannot be reset this way")
+
+    def detach(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("user_id") == member_id:
+                row["team_id"] = ""
+                row["role"] = "member"
+        return rows
+
+    await db.mutate("users", detach)
+    await remove_team_membership(db, member_id, team_id)
+    await set_membership_state(db, member_id, team_id, "removed")
+    invalidate_user_cache(member_id)
+    await log_activity(
+        db, team_id=team_id, action=ACTION_ROLE_CHANGED,
+        description=f"{user['name']} reset {member['name']}'s account", user_id=user["user_id"],
     )
     return {"ok": True}
 
@@ -588,6 +769,8 @@ async def create_invitation(team_id: str, payload: InviteCreateIn, user: Current
     users = await db.query("users")
     if any(u.get("email", "").lower() == payload.email.lower() and u.get("team_id") == team_id for u in users):
         raise HTTPException(status_code=409, detail="This person is already a member of the team")
+    if payload.subteam_id and await get_subteam(db, team_id, payload.subteam_id) is None:
+        raise HTTPException(status_code=400, detail="That subteam does not belong to your team")
 
     raw_token = secrets.token_urlsafe(24)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=INVITE_TTL_DAYS)).isoformat()
@@ -599,6 +782,8 @@ async def create_invitation(team_id: str, payload: InviteCreateIn, user: Current
         "token_hash": hash_token(raw_token),
         "expires_at": expires_at,
         "status": "pending",
+        "subteam_id": payload.subteam_id,
+        "subteam_role": payload.subteam_role,
     }
     await db.insert("invitations", invitation)
     await log_activity(
@@ -668,4 +853,17 @@ async def validate_invitation(token: str, db: DbDep) -> dict:
     team = next((t for t in teams if t.get("team_id") == invite["team_id"]), None)
     if team is None:
         raise HTTPException(status_code=400, detail="The invited team no longer exists")
-    return {"team_name": team["name"], "team_id": team["team_id"], "role": invite["role"], "email": invite["email"]}
+    if team.get("status") != "active":
+        raise HTTPException(status_code=400, detail="This team's event is complete; invite links are no longer active")
+    result = {"team_name": team["name"], "team_id": team["team_id"], "role": invite["role"], "email": invite["email"]}
+    subteam_id = invite.get("subteam_id", "")
+    if subteam_id:
+        subteam = await get_subteam(db, team["team_id"], subteam_id)
+        if subteam is None:
+            raise HTTPException(status_code=400, detail="This invitation points to a subteam that no longer exists")
+        result.update({
+            "subteam_id": subteam_id,
+            "subteam_name": subteam.get("name", ""),
+            "subteam_role": invite.get("subteam_role", "volunteer"),
+        })
+    return result

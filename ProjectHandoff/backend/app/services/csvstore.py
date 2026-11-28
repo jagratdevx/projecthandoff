@@ -34,29 +34,51 @@ SCHEMAS: dict[str, list[str]] = {
     "projects": [
         "project_id", "name", "description", "owner_id", "start_date",
         "deadline", "status", "priority", "created_at", "updated_at",
+        "subteam_id", "requirements",
     ],
     "events": [
         "event_id", "name", "description", "start_date", "end_date",
         "owner_id", "status", "created_at",
     ],
     "departments": ["department_id", "event_id", "name", "coordinator_id", "description", "status"],
+    "subteams": [
+        "subteam_id", "team_id", "name", "description",
+        "folder_id", "folder_url", "created_at",
+    ],
+    "subteam_members": ["subteam_id", "user_id", "role", "added_by", "added_at"],
     "department_members": ["department_id", "user_id", "added_by", "added_at"],
     "tasks": [
         "task_id", "project_id", "event_id", "department_id", "title", "description",
         "assigned_to", "created_by", "priority", "status", "deadline", "version",
-        "created_at", "updated_at",
+        "created_at", "updated_at", "subteam_id",
     ],
     "handovers": [
         "handover_id", "task_id", "previous_owner_id", "proposed_owner_id",
         "completed_work", "remaining_work", "current_state", "blockers",
         "next_actions", "relevant_files", "deadline", "status", "created_at", "accepted_at",
+        "subteam_id",
     ],
     "comments": ["comment_id", "task_id", "user_id", "comment", "created_at"],
     "activity": [
         "activity_id", "team_id", "project_id", "task_id", "user_id",
         "action", "description", "timestamp",
     ],
-    "invitations": ["invitation_id", "team_id", "email", "role", "token_hash", "expires_at", "status"],
+    "activity_log": [
+        "activity_id", "team_id", "subteam_id", "project_id", "task_id", "user_id",
+        "action", "description", "timestamp", "source",
+    ],
+    "team_memberships": [
+        "membership_id", "user_id", "team_id", "email", "role",
+        "state", "is_current", "joined_at",
+    ],
+    "subteam_activity": [
+        "activity_id", "team_id", "subteam_id", "project_id", "task_id", "user_id",
+        "action", "description", "timestamp",
+    ],
+    "invitations": [
+        "invitation_id", "team_id", "email", "role", "token_hash", "expires_at", "status",
+        "subteam_id", "subteam_role",
+    ],
     "attachments": [
         "attachment_id", "task_id", "project_id", "drive_file_id", "file_name",
         "uploaded_by", "uploaded_at",
@@ -65,7 +87,9 @@ SCHEMAS: dict[str, list[str]] = {
 
 # Tables with a team_id column live in the shared TeamData folder;
 # everything else is a per-team CSV under TeamData/{team_id}/.
-GLOBAL_TABLES = frozenset({"users", "teams", "credentials", "invitations", "activity"})
+GLOBAL_TABLES = frozenset({
+    "users", "teams", "credentials", "invitations", "activity", "team_memberships",
+})
 TEAM_TABLES = frozenset(set(SCHEMAS) - GLOBAL_TABLES)
 
 # Primary key column per table; "" means composite key (no unique single id).
@@ -76,11 +100,16 @@ ID_COLUMNS: dict[str, str] = {
     "projects": "project_id",
     "events": "event_id",
     "departments": "department_id",
+    "subteams": "subteam_id",
+    "subteam_members": "",
     "department_members": "",
     "tasks": "task_id",
     "handovers": "handover_id",
     "comments": "comment_id",
     "activity": "activity_id",
+    "activity_log": "activity_id",
+    "team_memberships": "membership_id",
+    "subteam_activity": "activity_id",
     "invitations": "invitation_id",
     "attachments": "attachment_id",
 }
@@ -94,6 +123,10 @@ class StoreError(Exception):
 
 class ValidationError(StoreError):
     """Row/CSV content failed validation."""
+
+
+class TeamArchivedError(StoreError):
+    """A completed team is read-only."""
 
 
 class ConflictError(StoreError):
@@ -364,6 +397,70 @@ class CsvStore:
                 lock = self._locks[key] = asyncio.Lock()
             return lock
 
+    async def _team_archived(self, team_id: str) -> bool:
+        if not team_id:
+            return False
+        rows = await self.query("teams")
+        row = next((item for item in rows if item.get("team_id") == team_id), None)
+        return bool(row and row.get("status") == "archived")
+
+    async def is_archived(self, team_id: str) -> bool:
+        return await self._team_archived(team_id)
+
+    async def assert_writable(self, team_id: str) -> None:
+        if await self._team_archived(team_id):
+            raise TeamArchivedError("This team is completed and read-only")
+
+    async def _backfill_memberships(self) -> None:
+        users = await self.query("users")
+        teams = {t.get("team_id", ""): t for t in await self.query("teams")}
+        existing = await self.query("team_memberships")
+        seen = {(row.get("user_id", ""), row.get("team_id", "")) for row in existing}
+        for user in users:
+            team_id = user.get("team_id", "")
+            if not team_id or (user.get("user_id", ""), team_id) in seen:
+                continue
+            archived = teams.get(team_id, {}).get("status") == "archived"
+            await self.insert(
+                "team_memberships",
+                {
+                    "user_id": user.get("user_id", ""),
+                    "team_id": team_id,
+                    "email": user.get("email", ""),
+                    "role": user.get("role", "member"),
+                    "state": "observer" if archived else "active",
+                    "is_current": "1",
+                    "joined_at": user.get("joined_at", ""),
+                },
+            )
+
+    async def _mirror_activity(self) -> None:
+        for team in await self.query("teams"):
+            team_id = team.get("team_id", "")
+            if not team_id:
+                continue
+            mirrored = {row.get("activity_id", "") for row in await self.query("activity_log", team_id)}
+            for entry in await self.query("activity"):
+                if entry.get("team_id") != team_id or entry.get("activity_id", "") in mirrored:
+                    continue
+                await self.insert(
+                    "activity_log",
+                    {**entry, "subteam_id": "", "source": "main"},
+                    team_id,
+                    allow_archived=True,
+                )
+                mirrored.add(entry.get("activity_id", ""))
+            for entry in await self.query("subteam_activity", team_id):
+                if entry.get("activity_id", "") in mirrored:
+                    continue
+                await self.insert(
+                    "activity_log",
+                    {**entry, "source": "subteam"},
+                    team_id,
+                    allow_archived=True,
+                )
+                mirrored.add(entry.get("activity_id", ""))
+
     # -- initialization -------------------------------------------------------
     async def init(self) -> None:
         await self.backend.ensure_root()
@@ -379,6 +476,56 @@ class CsvStore:
         if not self._read_cache:
             for table in sorted(TEAM_TABLES):
                 await self.backend.ensure_folder(f"Backups/global/{table}")
+
+    async def backfill_membership_data(self) -> None:
+        """Idempotent migration from the legacy single-team user model."""
+        await self._backfill_memberships()
+        await self._mirror_activity()
+
+    async def backfill_project_scope_data(self) -> None:
+        """Infer missing project/subteam links from existing tasks (idempotent)."""
+        for team in await self.query("teams"):
+            team_id = team.get("team_id", "")
+            if not team_id:
+                continue
+            projects = await self.query("projects", team_id)
+            tasks = await self.query("tasks", team_id)
+            subteam_ids = {
+                row.get("subteam_id", "")
+                for row in await self.query("subteams", team_id)
+                if row.get("subteam_id", "")
+            }
+            inferred: dict[str, str] = {}
+            for project in projects:
+                project_id = project.get("project_id", "")
+                if not project_id or project.get("subteam_id"):
+                    continue
+                candidates = {
+                    task.get("subteam_id", "")
+                    for task in tasks
+                    if task.get("project_id") == project_id
+                    and task.get("subteam_id", "") in subteam_ids
+                }
+                if len(candidates) == 1:
+                    inferred[project_id] = next(iter(candidates))
+            if not inferred:
+                continue
+
+            def assign_projects(rows: list[dict]) -> list[dict]:
+                for row in rows:
+                    if row.get("project_id", "") in inferred and not row.get("subteam_id"):
+                        row["subteam_id"] = inferred[row["project_id"]]
+                return rows
+
+            await self.mutate("projects", assign_projects, team_id, allow_archived=True)
+
+            def assign_tasks(rows: list[dict]) -> list[dict]:
+                for row in rows:
+                    if row.get("project_id", "") in inferred and not row.get("subteam_id"):
+                        row["subteam_id"] = inferred[row["project_id"]]
+                return rows
+
+            await self.mutate("tasks", assign_tasks, team_id, allow_archived=True)
 
     async def ensure_team(self, team_id: str) -> None:
         if all((team_id, table) in self._read_cache for table in TEAM_TABLES):
@@ -530,12 +677,16 @@ class CsvStore:
         table: str,
         fn: Callable[[list[dict]], list[dict]],
         team_id: str = "",
+        *,
+        allow_archived: bool = False,
     ) -> list[dict]:
         """Serialized read-modify-write.
 
         ``fn(rows)`` receives the freshest rows and must return the new rows
         (or raise). The lock guarantees only one writer per CSV at a time.
         """
+        if team_id and not allow_archived:
+            await self.assert_writable(team_id)
         lock = await self._lock_for(team_id, table)
         key = (team_id, table)
         self._active_writes += 1
@@ -599,7 +750,7 @@ class CsvStore:
         rows, _rev = await self.read(table, team_id)
         return rows
 
-    async def insert(self, table: str, row: dict, team_id: str = "") -> dict:
+    async def insert(self, table: str, row: dict, team_id: str = "", *, allow_archived: bool = False) -> dict:
         row = dict(row)
         id_col = ID_COLUMNS[table]
         if id_col:
@@ -609,7 +760,7 @@ class CsvStore:
             rows.append(row)
             return rows
 
-        await self.mutate(table, fn, team_id)
+        await self.mutate(table, fn, team_id, allow_archived=allow_archived)
         return row
 
     async def update(self, table: str, row_id: str, patch: dict, team_id: str = "") -> dict:

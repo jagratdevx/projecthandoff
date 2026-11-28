@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
-import { Check, Copy, ExternalLink, FolderOpen, Link2, RefreshCw, Send, Share2, Trash2, UserPlus } from "lucide-react";
-import { api } from "../api/client";
-import type { Invitation, Team, TeamDriveStatus, User } from "../api/types";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
+import { Archive, Check, Copy, ExternalLink, FolderOpen, Link2, RefreshCw, Send, Share2, Trash2, UserPlus, Users } from "lucide-react";
+import { api, ApiError } from "../api/client";
+import type { Invitation, Subteam, SubteamMember, SubteamRole, Team, TeamDriveStatus, User } from "../api/types";
 import { useResource } from "../hooks/useResource";
+import { useReadOnly } from "../hooks/useReadOnly";
 import { useAuth } from "../state/AuthContext";
 import { useToast } from "../state/ToastContext";
 import {
@@ -17,16 +19,20 @@ import {
   PageHeader,
   Select,
   SkeletonList,
+  Tabs,
   Textarea,
 } from "../components/ui";
 import { formatDate } from "../lib/format";
+
+type TeamTab = "members" | "subteams" | "invitations";
 
 const DRIVE_SETUP_HELP =
   "One-time, free (~10 minutes): console.cloud.google.com → create a project → enable the Google Drive API → OAuth consent screen (External, add yourself as test user) → Credentials → OAuth client ID → Web application. Paste the redirect URI below as an Authorized redirect URI, then copy the client ID and secret here.";
 
 export function TeamPage() {
-  const { user, refresh } = useAuth();
+  const { user, refresh, canCreateTeam, completeTeam } = useAuth();
   const toast = useToast();
+  const readOnly = useReadOnly();
 
   const { data, loading, reload } = useResource<{ team: Team | null; members: User[] }>(
     () => api("/api/teams/mine"),
@@ -35,7 +41,7 @@ export function TeamPage() {
   );
 
   const team = data?.team ?? null;
-  const isAdmin = user?.role === "owner" || user?.role === "admin";
+  const isAdmin = ["owner", "admin", "council", "teacher"].includes(user?.role ?? "");
   const useInvites = !!team && isAdmin;
 
   const { data: invitations, reload: reloadInvites } = useResource<Invitation[]>(
@@ -49,6 +55,36 @@ export function TeamPage() {
       storage_mode: "local", client_configured: false, connected: false, account: null, folder: null,
     })),
     [team?.team_id],
+    0,
+  );
+
+  const { data: subteams, loading: subteamsLoading, reload: reloadSubteams } = useResource<Subteam[]>(
+    () => (team ? api(`/api/teams/${team.team_id}/subteams`) : Promise.resolve([])),
+    [team?.team_id],
+    0,
+  );
+
+  const [teamTab, setTeamTab] = useState<TeamTab>("members");
+  const [subteamOpen, setSubteamOpen] = useState(false);
+  const [subteamForm, setSubteamForm] = useState({ name: "", description: "" });
+  const [subteamError, setSubteamError] = useState("");
+  const [subteamSaving, setSubteamSaving] = useState(false);
+  const [subteamToDelete, setSubteamToDelete] = useState<Subteam | null>(null);
+  const [deletingSubteam, setDeletingSubteam] = useState(false);
+  const [manageFor, setManageFor] = useState<Subteam | null>(null);
+  const [addMemberForm, setAddMemberForm] = useState<{ user_id: string; role: SubteamRole }>({ user_id: "", role: "volunteer" });
+  const [subteamMemberToRemove, setSubteamMemberToRemove] = useState<SubteamMember | null>(null);
+  const [subteamMemberBusy, setSubteamMemberBusy] = useState(false);
+  const [subteamInviteFor, setSubteamInviteFor] = useState<Subteam | null>(null);
+  const [subteamInviteForm, setSubteamInviteForm] = useState<{ email: string; role: SubteamRole }>({ email: "", role: "volunteer" });
+  const [subteamInvite, setSubteamInvite] = useState<Invitation | null>(null);
+  const [subteamInviteSaving, setSubteamInviteSaving] = useState(false);
+  const [subteamInviteError, setSubteamInviteError] = useState("");
+  const [subteamInviteCopied, setSubteamInviteCopied] = useState(false);
+
+  const { data: managedMembers, loading: managedMembersLoading, reload: reloadManagedMembers } = useResource<SubteamMember[]>(
+    () => (manageFor ? api(`/api/teams/${team?.team_id ?? ""}/subteams/${manageFor.subteam_id}/members`) : Promise.resolve([])),
+    [manageFor?.subteam_id],
     0,
   );
 
@@ -92,97 +128,261 @@ export function TeamPage() {
   const [folderOpen, setFolderOpen] = useState(false);
   const [folderForm, setFolderForm] = useState({ drive_folder_url: "" });
   const [linking, setLinking] = useState(false);
+  const [completeOpen, setCompleteOpen] = useState(false);
+  const [forceOpen, setForceOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
+  const createSubteam = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!team) return;
+    setSubteamSaving(true);
+    setSubteamError("");
+    try {
+      await api(`/api/teams/${team.team_id}/subteams`, {
+        method: "POST",
+        body: { name: subteamForm.name.trim(), description: subteamForm.description.trim() },
+      });
+      toast.push("success", "Subteam created with its own Drive folder");
+      setSubteamForm({ name: "", description: "" });
+      setSubteamOpen(false);
+      setTeamTab("subteams");
+      void reloadSubteams();
+    } catch (err) {
+      setSubteamError(err instanceof Error ? err.message : "Could not create subteam");
+    } finally {
+      setSubteamSaving(false);
+    }
+  };
+
+  const deleteSubteam = async () => {
+    if (!team || !subteamToDelete) return;
+    setDeletingSubteam(true);
+    try {
+      await api(`/api/teams/${team.team_id}/subteams/${subteamToDelete.subteam_id}`, { method: "DELETE" });
+      toast.push("success", "Subteam removed — its Drive folder was kept");
+      setSubteamToDelete(null);
+      void reloadSubteams();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Could not remove subteam");
+    } finally {
+      setDeletingSubteam(false);
+    }
+  };
+
+  const refreshSubteamData = () => {
+    void reloadSubteams();
+    void reloadManagedMembers();
+    void refresh();
+  };
+
+  const addSubteamMember = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!team || !manageFor || !addMemberForm.user_id) return;
+    setSubteamMemberBusy(true);
+    try {
+      await api(`/api/teams/${team.team_id}/subteams/${manageFor.subteam_id}/members`, {
+        method: "POST",
+        body: addMemberForm,
+      });
+      toast.push("success", `Added to ${manageFor.name} as ${addMemberForm.role}`);
+      setAddMemberForm({ user_id: "", role: "volunteer" });
+      refreshSubteamData();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Could not add member");
+    } finally {
+      setSubteamMemberBusy(false);
+    }
+  };
+
+  const changeSubteamMemberRole = async (member: SubteamMember, role: SubteamRole) => {
+    if (!team || !manageFor) return;
+    try {
+      await api(`/api/teams/${team.team_id}/subteams/${manageFor.subteam_id}/members/${member.user_id}`, {
+        method: "PATCH",
+        body: { role },
+      });
+      toast.push("success", `${member.name || "Member"} is now ${role} in ${manageFor.name}`);
+      refreshSubteamData();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Role update failed");
+    }
+  };
+
+  const removeSubteamMember = async () => {
+    if (!team || !manageFor || !subteamMemberToRemove) return;
+    setSubteamMemberBusy(true);
+    try {
+      await api(`/api/teams/${team.team_id}/subteams/${manageFor.subteam_id}/members/${subteamMemberToRemove.user_id}`, {
+        method: "DELETE",
+      });
+      toast.push("success", `${subteamMemberToRemove.name || "Member"} removed from ${manageFor.name}`);
+      setSubteamMemberToRemove(null);
+      refreshSubteamData();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Removal failed");
+    } finally {
+      setSubteamMemberBusy(false);
+    }
+  };
+
+  const sendSubteamInvite = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!team || !subteamInviteFor) return;
+    setSubteamInviteSaving(true);
+    setSubteamInviteError("");
+    try {
+      const invitation = await api<Invitation>(
+        `/api/teams/${team.team_id}/subteams/${subteamInviteFor.subteam_id}/invitations`,
+        { method: "POST", body: subteamInviteForm },
+      );
+      setSubteamInvite(invitation);
+      toast.push("success", "Subteam invitation created — share the link");
+      setSubteamInviteForm({ email: "", role: "volunteer" });
+      void reloadInvites();
+    } catch (err) {
+      setSubteamInviteError(err instanceof Error ? err.message : "Could not create invitation");
+    } finally {
+      setSubteamInviteSaving(false);
+    }
+  };
 
   // ------------------------------------------------------------------ create team
+  const createEvent = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const created = await api<Team & { authorize_url?: string; next_step?: string }>("/api/teams", {
+        method: "POST",
+        body: teamForm,
+      });
+      if (created.authorize_url) {
+        // One-time Google consent for the team owner — members never see this.
+        await refresh();
+        toast.push("success", "Team created — taking you to Google to connect your Drive…");
+        window.location.href = created.authorize_url;
+        return;
+      }
+      toast.push("success", "Team created");
+      await refresh();
+      void reload();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Failed to create team");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderCreateForm = (title: string, subtitle: string) => (
+    <div>
+      <PageHeader title={title} subtitle={subtitle} />
+      {loading ? (
+        <SkeletonList rows={2} />
+      ) : (
+        <Card className="mx-auto max-w-md p-6">
+          <form onSubmit={(event) => void createEvent(event)} className="space-y-4">
+            <Field label="Team name">
+              <Input required value={teamForm.name} onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })} placeholder="Robotics Club" />
+            </Field>
+            <Field label="Description">
+              <Textarea value={teamForm.description} onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })} placeholder="What does this team do?" />
+            </Field>
+            <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3.5 dark:border-brand-900 dark:bg-brand-950/40">
+              <p className="mb-3 text-sm font-medium text-brand-900 dark:text-brand-200">
+                Connect your Google Drive — all team files live in a folder you own
+              </p>
+              <div className="space-y-3">
+                <Field label="Google OAuth client ID">
+                  <Input
+                    required
+                    value={teamForm.drive_client_id}
+                    onChange={(e) => setTeamForm({ ...teamForm, drive_client_id: e.target.value })}
+                    placeholder="1234….apps.googleusercontent.com"
+                  />
+                </Field>
+                <Field label="Google OAuth client secret">
+                  <Input
+                    required
+                    type="password"
+                    value={teamForm.drive_client_secret}
+                    onChange={(e) => setTeamForm({ ...teamForm, drive_client_secret: e.target.value })}
+                    placeholder="GOCSPX-…"
+                  />
+                </Field>
+                <div className="text-xs text-stone-600 dark:text-stone-400">
+                  <p className="font-medium">Add this redirect URI in your Google Cloud console:</p>
+                  <code className="mt-1 block break-all rounded bg-stone-100 px-2 py-1 font-mono text-[11px] dark:bg-stone-800">
+                    {redirectUri || "loading…"}
+                  </code>
+                </div>
+                <details className="text-xs text-stone-600 dark:text-stone-400">
+                  <summary className="cursor-pointer font-medium">How do I get these? (one-time, ~10 min, free)</summary>
+                  <p className="mt-2 leading-relaxed">{DRIVE_SETUP_HELP}</p>
+                </details>
+              </div>
+            </div>
+            <Button type="submit" loading={saving} className="w-full">
+              <UserPlus className="h-4 w-4" aria-hidden /> Create team &amp; connect Drive
+            </Button>
+            <p className="text-center text-xs text-stone-500">
+              Members never need a Google account for this — only you, once. Have an invite link instead? Open it and register there.
+            </p>
+          </form>
+        </Card>
+      )}
+    </div>
+  );
+
+  const completeEvent = async (force = false) => {
+    if (!team) return;
+    setCompleting(true);
+    try {
+      await completeTeam(team.team_id, force);
+      toast.push("success", "Event completed — its history is preserved in memories");
+      setCompleteOpen(false);
+      setForceOpen(false);
+      void reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 502 && !force) {
+        setCompleteOpen(false);
+        setForceOpen(true);
+      } else {
+        toast.push("error", err instanceof Error ? err.message : "Could not complete the event");
+      }
+    } finally {
+      setCompleting(false);
+    }
+  };
+
   if (!team) {
+    return renderCreateForm("Team", "Create a team to unlock projects, tasks and handovers");
+  }
+
+  // Completed events are archived and read-only. Offer a fresh event instead.
+  if (readOnly) {
     return (
       <div>
-        <PageHeader title="Team" subtitle="Create a team to unlock projects, tasks and handovers" />
-        {loading ? (
-          <SkeletonList rows={2} />
+        <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
+          <Archive className="h-4 w-4 shrink-0" aria-hidden />
+          <p className="min-w-0 flex-1">
+            <strong className="font-semibold">{team.name}</strong> is complete and archived. This team is read-only —
+            its history remains available in memories.
+          </p>
+          <Link to="/memories" className="font-medium underline underline-offset-2 hover:no-underline">
+            Browse memories
+          </Link>
+        </div>
+        {canCreateTeam ? (
+          renderCreateForm("Start a new event", "Create a new team to keep working — your archived event stays safe.")
         ) : (
-          <Card className="mx-auto max-w-md p-6">
-            <form
-              onSubmit={async (event) => {
-                event.preventDefault();
-                setSaving(true);
-                try {
-                  const created = await api<Team & { authorize_url?: string; next_step?: string }>("/api/teams", {
-                    method: "POST",
-                    body: teamForm,
-                  });
-                  if (created.authorize_url) {
-                    // One-time Google consent for the team owner — members
-                    // never see this. Google returns to /team afterwards.
-                    await refresh();
-                    toast.push("success", "Team created — taking you to Google to connect your Drive…");
-                    window.location.href = created.authorize_url;
-                    return;
-                  }
-                  toast.push("success", "Team created");
-                  await refresh();
-                  void reload();
-                } catch (err) {
-                  toast.push("error", err instanceof Error ? err.message : "Failed to create team");
-                } finally {
-                  setSaving(false);
-                }
-              }}
-              className="space-y-4"
-            >
-              <Field label="Team name">
-                <Input required value={teamForm.name} onChange={(e) => setTeamForm({ ...teamForm, name: e.target.value })} placeholder="Robotics Club" />
-              </Field>
-              <Field label="Description">
-                <Textarea value={teamForm.description} onChange={(e) => setTeamForm({ ...teamForm, description: e.target.value })} placeholder="What does this team do?" />
-              </Field>
-              <div className="rounded-lg border border-brand-200 bg-brand-50/60 p-3.5 dark:border-brand-900 dark:bg-brand-950/40">
-                <p className="mb-3 text-sm font-medium text-brand-900 dark:text-brand-200">
-                  Connect your Google Drive — all team files live in a folder you own
-                </p>
-                <div className="space-y-3">
-                  <Field label="Google OAuth client ID">
-                    <Input
-                      required
-                      value={teamForm.drive_client_id}
-                      onChange={(e) => setTeamForm({ ...teamForm, drive_client_id: e.target.value })}
-                      placeholder="1234….apps.googleusercontent.com"
-                    />
-                  </Field>
-                  <Field label="Google OAuth client secret">
-                    <Input
-                      required
-                      type="password"
-                      value={teamForm.drive_client_secret}
-                      onChange={(e) => setTeamForm({ ...teamForm, drive_client_secret: e.target.value })}
-                      placeholder="GOCSPX-…"
-                    />
-                  </Field>
-                  <div className="text-xs text-stone-600 dark:text-stone-400">
-                    <p className="font-medium">Add this redirect URI in your Google Cloud console:</p>
-                    <code className="mt-1 block break-all rounded bg-stone-100 px-2 py-1 font-mono text-[11px] dark:bg-stone-800">
-                      {redirectUri || "loading…"}
-                    </code>
-                  </div>
-                  <details className="text-xs text-stone-600 dark:text-stone-400">
-                    <summary className="cursor-pointer font-medium">How do I get these? (one-time, ~10 min, free)</summary>
-                    <p className="mt-2 leading-relaxed">{DRIVE_SETUP_HELP}</p>
-                  </details>
-                </div>
-              </div>
-              <Button type="submit" loading={saving} className="w-full">
-                <UserPlus className="h-4 w-4" aria-hidden /> Create team &amp; connect Drive
-              </Button>
-              <p className="text-center text-xs text-stone-500">
-                Members never need a Google account for this — only you, once. Have an invite link instead? Open it and register there.
-              </p>
-            </form>
+          <Card className="mx-auto max-w-md p-6 text-sm text-stone-600 dark:text-stone-300">
+            You cannot create another team while you belong to an active one. Switch teams from the sidebar, or browse your memories.
           </Card>
         )}
       </div>
     );
   }
 
+  const canComplete = user?.role === "owner" || user?.role === "teacher";
   const members = data?.members ?? [];
   const drive = driveStatus ?? null;
   const needsFolderLink =
@@ -304,17 +504,24 @@ export function TeamPage() {
         title={team.name}
         subtitle={team.description || "No description"}
         actions={
-          isAdmin && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setEditForm({ name: team.name, description: team.description });
-                setEditOpen(true);
-              }}
-            >
-              Edit team
-            </Button>
-          )
+          <>
+            {canComplete && (
+              <Button variant="secondary" onClick={() => setCompleteOpen(true)}>
+                Complete event
+              </Button>
+            )}
+            {isAdmin && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditForm({ name: team.name, description: team.description });
+                  setEditOpen(true);
+                }}
+              >
+                Edit team
+              </Button>
+            )}
+          </>
         }
       />
 
@@ -407,10 +614,22 @@ export function TeamPage() {
         </Card>
       )}
 
-      {/* Members */}
-      <Card className="mb-6">
-        <CardHeader
-          title={`Members (${members.length})`}
+      <div className="mb-4">
+        <Tabs<TeamTab>
+          tabs={[
+            { id: "members", label: "Members", count: members.length },
+            { id: "subteams", label: "Subteams", count: subteams?.length ?? 0 },
+            ...(useInvites ? [{ id: "invitations" as const, label: "Invitations", count: invitations?.length ?? 0 }] : []),
+          ]}
+          value={teamTab}
+          onChange={setTeamTab}
+        />
+      </div>
+
+      {teamTab === "members" && (
+        <Card className="mb-6">
+          <CardHeader
+            title={`Members (${members.length})`}
           action={
             isAdmin && (
               <Button variant="secondary" onClick={() => { setLastInvite(null); setInviteOpen(true); }}>
@@ -432,7 +651,7 @@ export function TeamPage() {
               <div className="flex items-center gap-2">
                 {isAdmin && member.role !== "owner" ? (
                   <Select value={member.role} onChange={(e) => void updateRole(member, e.target.value)} className="w-36" aria-label={`Role of ${member.name}`}>
-                    {["admin", "coordinator", "member"].map((role) => (
+                    {["admin", "council", "teacher", "coordinator", "member"].map((role) => (
                       <option key={role} value={role}>
                         {role}
                       </option>
@@ -450,10 +669,122 @@ export function TeamPage() {
             </div>
           ))}
         </div>
-      </Card>
+        </Card>
+      )}
 
-      {/* Invitations */}
-      {useInvites && (
+      {teamTab === "subteams" && (
+        <Card className="mb-6">
+          <CardHeader
+            title="Subteams"
+            action={
+              isAdmin && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSubteamForm({ name: "", description: "" });
+                    setSubteamError("");
+                    setSubteamOpen(true);
+                  }}
+                >
+                  New subteam
+                </Button>
+              )
+            }
+          />
+          <div className="divide-y divide-stone-100 dark:divide-stone-800">
+            {subteamsLoading && !subteams?.length && <div className="p-5"><SkeletonList rows={2} /></div>}
+            {subteams?.map((subteam) => {
+              const canManage = !!subteam.can_manage || isAdmin;
+              return (
+              <div key={subteam.subteam_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-stone-900 dark:text-stone-100">{subteam.name}</p>
+                  <p className="break-words text-xs text-stone-500">{subteam.description || "No description"}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    {subteam.my_role ? (
+                      <Badge value={subteam.my_role} />
+                    ) : (
+                      <span className="text-xs text-stone-400">Not a member</span>
+                    )}
+                    <span className="text-xs text-stone-500">
+                      {subteam.member_count ?? 0} {subteam.member_count === 1 ? "member" : "members"}
+                    </span>
+                    <Link
+                      to={`/team/subteams/${encodeURIComponent(subteam.subteam_id)}/projects`}
+                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Projects
+                    </Link>
+                    <Link
+                      to={`/activity?subteam_id=${encodeURIComponent(subteam.subteam_id)}`}
+                      className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      View log
+                    </Link>
+                  </div>
+                  {subteam.folder_url ? (
+                    <a
+                      href={subteam.folder_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:underline dark:text-brand-400"
+                    >
+                      Open folder in Google Drive <ExternalLink className="h-3 w-3" aria-hidden />
+                    </a>
+                  ) : (
+                    <p className="mt-1 break-words text-xs text-stone-400">Folder: {subteam.folder_id || "pending"}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-1">
+                  {canManage && (
+                    <>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setSubteamInviteFor(subteam);
+                          setSubteamInvite(null);
+                          setSubteamInviteError("");
+                          setSubteamInviteCopied(false);
+                          setSubteamInviteForm({ email: "", role: "volunteer" });
+                        }}
+                      >
+                        <UserPlus className="h-4 w-4" aria-hidden /> Invite
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          setManageFor(subteam);
+                          setAddMemberForm({ user_id: "", role: "volunteer" });
+                        }}
+                      >
+                        <Users className="h-4 w-4" aria-hidden /> Manage
+                      </Button>
+                    </>
+                  )}
+                  {isAdmin && (
+                    <Button
+                      variant="ghost"
+                      className="p-2"
+                      onClick={() => setSubteamToDelete(subteam)}
+                      aria-label={`Remove ${subteam.name}`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              );
+            })}
+            {!subteamsLoading && !subteams?.length && (
+              <p className="px-5 py-4 text-sm text-stone-500">
+                No subteams yet. Create one to give each group a readable folder in Drive.
+              </p>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {teamTab === "invitations" && useInvites && (
         <Card>
           <CardHeader
             title="Pending invitations"
@@ -554,6 +885,191 @@ export function TeamPage() {
         </form>
       </Modal>
 
+      {/* Create subteam modal */}
+      <Modal open={subteamOpen} onClose={() => setSubteamOpen(false)} title="New subteam">
+        <form onSubmit={(event) => void createSubteam(event)} className="space-y-4">
+          <Field
+            label="Subteam name"
+            hint="A Drive folder with this name is created inside the team folder. Names must be unique and cannot match the team name."
+          >
+            <Input
+              required
+              maxLength={80}
+              value={subteamForm.name}
+              onChange={(e) => setSubteamForm({ ...subteamForm, name: e.target.value })}
+              placeholder="Design"
+            />
+          </Field>
+          <Field label="Description">
+            <Textarea
+              value={subteamForm.description}
+              onChange={(e) => setSubteamForm({ ...subteamForm, description: e.target.value })}
+              placeholder="What this group handles"
+            />
+          </Field>
+          {subteamError && <p className="text-sm text-red-600 dark:text-red-400">{subteamError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setSubteamOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={subteamSaving}>
+              Create subteam
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!subteamToDelete}
+        onClose={() => setSubteamToDelete(null)}
+        onConfirm={() => void deleteSubteam()}
+        title="Remove subteam"
+        message={`Remove “${subteamToDelete?.name ?? ""}” from the team? Its Drive folder is kept so no files are lost.`}
+        confirmLabel="Remove"
+        loading={deletingSubteam}
+      />
+
+      {/* Manage subteam members */}
+      <Modal open={!!manageFor} onClose={() => setManageFor(null)} title={`Manage ${manageFor?.name ?? "subteam"}`} wide>
+        {manageFor?.can_manage || isAdmin ? (
+          <>
+            <p className="mb-4 text-sm text-stone-500 dark:text-stone-400">
+              Add existing team members, change their subteam role, or remove them. The last coordinator cannot be
+              removed or demoted.
+            </p>
+            <form onSubmit={addSubteamMember} className="mb-4 flex flex-wrap items-end gap-2 rounded-xl bg-stone-50 p-3 dark:bg-stone-900/60">
+              <div className="min-w-[12rem] flex-1">
+                <Field label="Add team member">
+                  <Select
+                    required
+                    value={addMemberForm.user_id}
+                    onChange={(e) => setAddMemberForm({ ...addMemberForm, user_id: e.target.value })}
+                  >
+                    <option value="">Choose a member…</option>
+                    {members
+                      .filter((member) => !managedMembers?.some((m) => m.user_id === member.user_id))
+                      .map((member) => (
+                        <option key={member.user_id} value={member.user_id}>
+                          {member.name}
+                        </option>
+                      ))}
+                  </Select>
+                </Field>
+              </div>
+              <div className="w-32">
+                <Field label="Role">
+                  <Select
+                    value={addMemberForm.role}
+                    onChange={(e) => setAddMemberForm({ ...addMemberForm, role: e.target.value as SubteamRole })}
+                  >
+                    <option value="coordinator">coordinator</option>
+                    <option value="volunteer">volunteer</option>
+                  </Select>
+                </Field>
+              </div>
+              <Button type="submit" loading={subteamMemberBusy} disabled={!addMemberForm.user_id}>
+                Add
+              </Button>
+            </form>
+            <div className="divide-y divide-stone-100 dark:divide-stone-800">
+              {managedMembersLoading && !managedMembers?.length && <div className="p-4"><SkeletonList rows={2} /></div>}
+              {managedMembers?.map((member) => (
+                <div key={member.user_id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-stone-900 dark:text-stone-100">{member.name || member.user_id}</p>
+                    <p className="break-words text-xs text-stone-500">{member.email}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={member.role}
+                      onChange={(e) => void changeSubteamMemberRole(member, e.target.value as SubteamRole)}
+                      className="w-32"
+                      aria-label={`Subteam role of ${member.name || member.user_id}`}
+                    >
+                      <option value="coordinator">coordinator</option>
+                      <option value="volunteer">volunteer</option>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      className="p-2"
+                      onClick={() => setSubteamMemberToRemove(member)}
+                      aria-label={`Remove ${member.name || member.user_id} from subteam`}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {!managedMembersLoading && !managedMembers?.length && (
+                <p className="py-4 text-sm text-stone-500">No members in this subteam yet.</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-stone-500">You cannot manage this subteam.</p>
+        )}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!subteamMemberToRemove}
+        onClose={() => setSubteamMemberToRemove(null)}
+        onConfirm={() => void removeSubteamMember()}
+        title="Remove subteam member"
+        message={`Remove ${subteamMemberToRemove?.name || "this member"} from ${manageFor?.name ?? "this subteam"}? They stay on the main team.`}
+        confirmLabel="Remove"
+        loading={subteamMemberBusy}
+      />
+
+      {/* Invite someone new into a subteam with a role */}
+      <Modal open={!!subteamInviteFor} onClose={() => setSubteamInviteFor(null)} title={`Invite to ${subteamInviteFor?.name ?? "subteam"}`}>
+        <form onSubmit={sendSubteamInvite} className="space-y-4">
+          <Field label="Email">
+            <Input
+              required
+              type="email"
+              value={subteamInviteForm.email}
+              onChange={(e) => setSubteamInviteForm({ ...subteamInviteForm, email: e.target.value })}
+              placeholder="teammate@school.edu"
+            />
+          </Field>
+          <Field label="Subteam role" hint="They join the main team as a member with this role in the subteam.">
+            <Select
+              value={subteamInviteForm.role}
+              onChange={(e) => setSubteamInviteForm({ ...subteamInviteForm, role: e.target.value as SubteamRole })}
+            >
+              <option value="volunteer">volunteer</option>
+              <option value="coordinator">coordinator</option>
+            </Select>
+          </Field>
+          {subteamInviteError && <p className="text-sm text-red-600 dark:text-red-400">{subteamInviteError}</p>}
+          {subteamInvite?.invite_url && (
+            <div className="flex flex-col gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3.5 py-2.5 dark:border-brand-800 dark:bg-brand-950/60 sm:flex-row sm:items-center">
+              <p className="min-w-0 flex-1 break-all text-sm text-brand-900 dark:text-brand-200">{subteamInvite.invite_url}</p>
+              <Button
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  void navigator.clipboard.writeText(subteamInvite.invite_url!);
+                  setSubteamInviteCopied(true);
+                  window.setTimeout(() => setSubteamInviteCopied(false), 2000);
+                }}
+              >
+                {subteamInviteCopied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
+                {subteamInviteCopied ? "Copied" : "Copy link"}
+              </Button>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setSubteamInviteFor(null)}>
+              Close
+            </Button>
+            <Button type="submit" loading={subteamInviteSaving}>
+              <Send className="h-4 w-4" aria-hidden /> Create invite link
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Invite modal */}
       <Modal open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite a member">
         <form onSubmit={sendInvite} className="space-y-4">
@@ -562,7 +1078,7 @@ export function TeamPage() {
           </Field>
           <Field label="Role">
             <Select value={inviteForm.role} onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}>
-              {["member", "coordinator", "admin"].map((role) => (
+              {["member", "coordinator", "council", "teacher", "admin"].map((role) => (
                 <option key={role} value={role}>
                   {role}
                 </option>
@@ -588,6 +1104,26 @@ export function TeamPage() {
         title="Remove member"
         message={`Remove ${removeConfirm?.name ?? ""} from ${team.name}? They will lose access to this team's data.`}
         confirmLabel="Remove"
+      />
+
+      <ConfirmDialog
+        open={completeOpen}
+        onClose={() => setCompleteOpen(false)}
+        onConfirm={() => void completeEvent()}
+        title="Complete this event?"
+        message={`“${team.name}” will be archived and become read-only for every member. Its history will stay available in memories, and all pending invitations will expire. This cannot be undone.`}
+        confirmLabel="Complete event"
+        loading={completing}
+      />
+
+      <ConfirmDialog
+        open={forceOpen}
+        onClose={() => setForceOpen(false)}
+        onConfirm={() => void completeEvent(true)}
+        title="Complete without Drive access?"
+        message="Some members' folders could not be switched to read-only. Completing anyway archives the event now, but those Drive permissions may remain unchanged."
+        confirmLabel="Complete anyway"
+        loading={completing}
       />
     </div>
   );

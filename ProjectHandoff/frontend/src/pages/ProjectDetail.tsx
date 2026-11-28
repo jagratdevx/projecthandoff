@@ -2,9 +2,8 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Archive, ClipboardList, FileDown, History, Plus, Upload } from "lucide-react";
 import { api, downloadAttachment } from "../api/client";
-import type { Activity, Attachment, Project, Task, User } from "../api/types";
+import type { Activity, Attachment, Project, ProjectMember, Subteam, SubteamMember, Task } from "../api/types";
 import { useResource } from "../hooks/useResource";
-import { useMembers } from "../hooks/useMembers";
 import { useAuth } from "../state/AuthContext";
 import { useToast } from "../state/ToastContext";
 import {
@@ -30,7 +29,8 @@ interface ProjectDetailData {
   tasks: Task[];
   progress: { total: number; completed: number };
   activity: Activity[];
-  members: User[];
+  members: ProjectMember[];
+  assignable_members?: SubteamMember[];
 }
 
 interface TabId {
@@ -40,14 +40,18 @@ interface TabId {
 export function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const members = useMembers();
+  const { user, team, subteams: mySubteams } = useAuth();
   const toast = useToast();
 
   const { data, loading, error, reload } = useResource<ProjectDetailData>(
     () => api(`/api/projects/${id}`),
     [id],
     15000,
+  );
+  const { data: teamSubteams } = useResource<Subteam[]>(
+    () => (team ? api(`/api/teams/${encodeURIComponent(team.team_id)}/subteams`) : Promise.resolve([])),
+    [team?.team_id],
+    0,
   );
   const { data: files, reload: reloadFiles } = useResource<Attachment[]>(
     () => api(`/api/attachments?project_id=${id}`),
@@ -60,20 +64,34 @@ export function ProjectDetail() {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [taskOpen, setTaskOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", description: "", deadline: "", priority: "Medium", status: "Active", owner_id: "" });
+  const [editForm, setEditForm] = useState({
+    name: "", description: "", deadline: "", priority: "Medium", status: "Active",
+    owner_id: "", subteam_id: "", requirements: "",
+  });
   const [taskForm, setTaskForm] = useState({ title: "", description: "", assigned_to: "", deadline: "", priority: "Medium", status: "Not Started" });
   const [saving, setSaving] = useState(false);
 
+  const fullAccess = ["owner", "admin", "council", "teacher"].includes(user?.role ?? "");
+
   const canManage = useMemo(() => {
     if (!data || !user) return false;
-    return user.role === "owner" || user.role === "admin" || data.project.owner_id === user.user_id;
-  }, [data, user]);
+    if (fullAccess) return true;
+    if (data.project.subteam_id && mySubteams.some((s) => s.subteam_id === data.project.subteam_id && s.role === "coordinator")) return true;
+    return !data.project.subteam_id && data.project.owner_id === user.user_id;
+  }, [data, user, fullAccess, mySubteams]);
 
   if (loading && !data) return <SkeletonList rows={4} />;
   if (error || !data) return <p className="text-sm text-red-600 dark:text-red-400">{error ?? "Project not found"}</p>;
 
   const { project, tasks, progress, activity } = data;
-  const ownerName = data.members.find((m) => m.user_id === project.owner_id)?.name ?? "—";
+  // Subteam-scoped projects expose only their assignable members on detail.
+  const assignableMembers: ProjectMember[] = project.subteam_id && data.assignable_members?.length
+    ? data.assignable_members
+    : data.members;
+  const subteamName = teamSubteams?.find((s) => s.subteam_id === project.subteam_id)?.name
+    ?? project.subteam_name
+    ?? project.subteam_id;
+  const ownerName = assignableMembers.find((m) => m.user_id === project.owner_id)?.name ?? "—";
 
   const openEdit = () => {
     setEditForm({
@@ -83,6 +101,8 @@ export function ProjectDetail() {
       priority: project.priority,
       status: project.status,
       owner_id: project.owner_id,
+      subteam_id: project.subteam_id,
+      requirements: project.requirements,
     });
     setEditOpen(true);
   };
@@ -91,7 +111,15 @@ export function ProjectDetail() {
     event.preventDefault();
     setSaving(true);
     try {
-      await api(`/api/projects/${project.project_id}`, { method: "PATCH", body: editForm });
+      const body = fullAccess ? editForm : {
+        name: editForm.name,
+        description: editForm.description,
+        deadline: editForm.deadline,
+        priority: editForm.priority,
+        status: editForm.status,
+        owner_id: editForm.owner_id,
+      };
+      await api(`/api/projects/${project.project_id}`, { method: "PATCH", body });
       toast.push("success", "Project updated");
       setEditOpen(false);
       void reload();
@@ -202,6 +230,32 @@ export function ProjectDetail() {
         </Card>
       </div>
 
+      {(project.subteam_id || project.requirements) && (
+        <Card className="mb-6 p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="text-xs text-stone-500">Subteam</p>
+              {project.subteam_id ? (
+                <Link
+                  to={`/team/subteams/${encodeURIComponent(project.subteam_id)}/projects`}
+                  className="mt-1 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
+                >
+                  {subteamName}
+                </Link>
+              ) : (
+                <p className="mt-1 text-sm font-medium text-stone-700 dark:text-stone-200">Unassigned</p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">Requirements</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-stone-700 dark:text-stone-300">
+                {project.requirements || "No requirements recorded"}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Tabs
         tabs={[
           { id: "tasks", label: `Tasks (${tasks.length})` },
@@ -226,7 +280,7 @@ export function ProjectDetail() {
             <div className="divide-y divide-stone-100 dark:divide-stone-800">
               {tasks.length === 0 && <p className="px-5 py-6 text-sm text-stone-500">No tasks yet. Add the first one.</p>}
               {tasks.map((task) => {
-                const assignee = data.members.find((m) => m.user_id === task.assigned_to)?.name ?? "Unassigned";
+                const assignee = assignableMembers.find((m) => m.user_id === task.assigned_to)?.name ?? "Unassigned";
                 return (
                   <Link key={task.task_id} to={`/tasks/${task.task_id}`} className="flex items-center justify-between gap-3 px-5 py-3 transition hover:bg-stone-50 dark:hover:bg-stone-800/60">
                     <div className="min-w-0">
@@ -334,14 +388,38 @@ export function ProjectDetail() {
             </Field>
             <Field label="Owner">
               <Select value={editForm.owner_id} onChange={(e) => setEditForm({ ...editForm, owner_id: e.target.value })}>
-                {members.map((m) => (
+                {assignableMembers.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
-                    {m.name}
+                    {m.name || m.user_id}
                   </option>
                 ))}
               </Select>
             </Field>
           </div>
+          {fullAccess && (
+            <>
+              <Field label="Subteam">
+                <Select
+                  value={editForm.subteam_id}
+                  onChange={(e) => setEditForm({ ...editForm, subteam_id: e.target.value })}
+                >
+                  <option value="">Unassigned (legacy)</option>
+                  {(teamSubteams ?? []).map((subteam) => (
+                    <option key={subteam.subteam_id} value={subteam.subteam_id}>
+                      {subteam.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Requirements" hint="Required when this project belongs to a subteam.">
+                <Textarea
+                  required={!!editForm.subteam_id}
+                  value={editForm.requirements}
+                  onChange={(e) => setEditForm({ ...editForm, requirements: e.target.value })}
+                />
+              </Field>
+            </>
+          )}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>
               Cancel
@@ -366,9 +444,9 @@ export function ProjectDetail() {
             <Field label="Assignee">
               <Select value={taskForm.assigned_to} onChange={(e) => setTaskForm({ ...taskForm, assigned_to: e.target.value })}>
                 <option value="">Unassigned</option>
-                {members.map((m) => (
+                {assignableMembers.map((m) => (
                   <option key={m.user_id} value={m.user_id}>
-                    {m.name}
+                    {m.name || m.user_id}
                   </option>
                 ))}
               </Select>

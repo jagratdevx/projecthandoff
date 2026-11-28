@@ -4,7 +4,8 @@ import { api } from "../api/client";
 import { useAuth } from "../state/AuthContext";
 import { useToast } from "../state/ToastContext";
 import { useTheme } from "../hooks/useTheme";
-import { Button, Card, CardHeader, Field, Input, PageHeader } from "../components/ui";import { formatTime } from "../lib/format";
+import { Link, useNavigate } from "react-router-dom";
+import { Button, Card, CardHeader, Field, Input, Modal, PageHeader } from "../components/ui";import { formatTime } from "../lib/format";
 
 interface DriveStatus {
   storage_mode: string;
@@ -19,6 +20,7 @@ export function Settings() {
   const { user, refresh } = useAuth();
   const { theme, toggle } = useTheme();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const [name, setName] = useState(user?.name ?? "");
   const [savingName, setSavingName] = useState(false);
@@ -28,6 +30,9 @@ export function Settings() {
   const [drive, setDrive] = useState<DriveStatus | null>(null);
   const [driveLoading, setDriveLoading] = useState(true);
   const [authorizing, setAuthorizing] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +86,25 @@ export function Settings() {
     } catch (err) {
       toast.push("error", err instanceof Error ? err.message : "Could not start authorization");
       setAuthorizing(false);
+    }
+  };
+
+  const resetAccount = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setResetting(true);
+    try {
+      await api("/api/auth/account/reset", {
+        method: "POST",
+        body: { email: resetEmail.trim(), confirm: true },
+      });
+      setResetOpen(false);
+      await refresh();
+      toast.push("success", "Account reset — you can start a new team");
+      navigate("/team");
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Account reset failed");
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -163,9 +187,9 @@ export function Settings() {
                   {isDriveMode ? <Cloud className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden /> : <HardDrive className="mt-0.5 h-4 w-4 shrink-0 text-stone-400" aria-hidden />}
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
-                      {isDriveMode ? "Google Drive (organizer account)" : "Local development storage"}
+                      {isDriveMode ? "Google Drive (connected team folder)" : "Local development storage"}
                     </p>
-                    <p className="break-words text-xs text-stone-500">{drive?.message ?? "All structured data lives in CSV files in Drive; uploads are stored there too."}</p>
+                    <p className="break-words text-xs text-stone-500">{drive?.message ?? "Each team's CSV tables and uploads live in that team's own Drive folder."}</p>
                   </div>
                 </div>
                 {isDriveMode && (
@@ -185,7 +209,7 @@ export function Settings() {
                   <p className="text-sm text-amber-900 dark:text-amber-200">
                     This backend is running in explicit local development mode. Data is stored on this machine only —
                     it is NOT synchronized through Google Drive. Production use requires PH_STORAGE_MODE=drive and
-                    organizer OAuth authorization.
+                    a connected Drive account.
                   </p>
                 </div>
               )}
@@ -197,7 +221,10 @@ export function Settings() {
                       Drive authorization: {drive?.authorized ? "connected" : "not connected"}
                     </p>
                     <p className="break-words text-xs text-stone-500">
-                      {drive?.authorized ? `Authorized as ${drive.account ?? "organizer"}` : "The organizer must authorize once; all team members share this connection."}
+                      {drive?.authorized ? `Authorized as ${drive.account ?? "Google account"}` : "The team owner connects Drive from the Team page."}{" "}
+                      <Link to="/team" className="font-medium text-stone-700 underline underline-offset-2 dark:text-stone-300">
+                        Manage team folder
+                      </Link>
                     </p>
                   </div>
                   {!drive?.authorized && (
@@ -216,6 +243,30 @@ export function Settings() {
         </div>
       </Card>
 
+      {/* Reset account */}
+      <Card className="mb-6">
+        <CardHeader title="Reset account" />
+        <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-stone-900 dark:text-stone-100">Start over with a clean account</p>
+            <p className="mt-1 text-xs text-stone-500">
+              Detach this account from every team. History is kept, but you lose access to those teams until invited
+              back. As the last overseer of an active team, complete that event first.
+            </p>
+          </div>
+          <Button
+            variant="danger"
+            className="w-full sm:w-auto"
+            onClick={() => {
+              setResetEmail(user?.email ?? "");
+              setResetOpen(true);
+            }}
+          >
+            <AlertTriangle className="h-4 w-4" aria-hidden /> Reset account
+          </Button>
+        </div>
+      </Card>
+
       {/* Session */}
       <Card>
         <CardHeader title="Session" />
@@ -229,6 +280,26 @@ export function Settings() {
           </Button>
         </div>
       </Card>
+
+      <Modal open={resetOpen} onClose={() => setResetOpen(false)} title="Confirm account reset">
+        <form onSubmit={resetAccount} className="space-y-4">
+          <p className="text-sm text-stone-600 dark:text-stone-300">
+            This removes you from all teams. Your name and sign-in stay, but you will need a new invitation to rejoin an
+            event. Type your account email to confirm.
+          </p>
+          <Field label="Account email">
+            <Input required type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setResetOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" loading={resetting}>
+              Reset account
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

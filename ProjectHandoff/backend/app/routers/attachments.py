@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.deps import CurrentUser, DbDep, SettingsDep, require_roles, require_team
+from app.services.subteams import has_full_access
 from app.services.activity import ACTION_FILE_DELETED, ACTION_FILE_UPLOADED, log_activity
 from app.services.csvstore import now_iso, new_id
 from app.services.uploads import UploadValidationError, guess_mimetype, validate_upload
@@ -62,6 +63,7 @@ async def upload_attachment(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     folder = _folder_for(team_id, project_id, event_id)
+    await db.assert_writable(team_id)
     drive_file_id = await db.backend.upload_file(folder, safe_name, contents, guess_mimetype(safe_name))
 
     attachment = {
@@ -111,10 +113,11 @@ async def download_attachment(attachment_id: str, user: CurrentUser, db: DbDep) 
 async def delete_attachment(attachment_id: str, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
     attachment = await _get_attachment(db, user, attachment_id)
-    if attachment.get("uploaded_by") != user["user_id"] and user["role"] not in ("owner", "admin"):
+    if attachment.get("uploaded_by") != user["user_id"] and not has_full_access(user):
         raise HTTPException(status_code=403, detail="Only the uploader or team admins can delete this file")
 
     try:
+        await db.assert_writable(team_id)
         await db.backend.delete_file(attachment["drive_file_id"], team_id)
     except Exception:
         pass  # drive file already gone; still remove the row

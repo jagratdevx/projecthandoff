@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { Bot, FileText, Handshake, History, ListPlus, RefreshCcw, UserPlus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Bot, FileText, Handshake, History, ListPlus, RefreshCcw, UserPlus, Users } from "lucide-react";
 import { api } from "../api/client";
-import type { Activity } from "../api/types";
+import type { Activity, Subteam } from "../api/types";
 import { useResource } from "../hooks/useResource";
-import { Button, EmptyState, PageHeader, SkeletonList } from "../components/ui";import { timeAgo } from "../lib/format";
+import { useAuth } from "../state/AuthContext";
+import { Button, EmptyState, PageHeader, Select, SkeletonList } from "../components/ui";
+import { timeAgo } from "../lib/format";
 
 const ICONS: Record<string, typeof History> = {
   task: ListPlus,
@@ -14,6 +16,7 @@ const ICONS: Record<string, typeof History> = {
   project: Bot,
   event: Bot,
   department: Bot,
+  subteam: Users,
   comment: History,
 };
 
@@ -26,18 +29,61 @@ function iconFor(action: string) {
 const PAGE_SIZE = 40;
 
 export function ActivityPage() {
+  const { team } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const subteamId = params.get("subteam_id") ?? "";
+
+  const { data: subteams } = useResource<Subteam[]>(
+    () => (team ? api(`/api/teams/${team.team_id}/subteams`) : Promise.resolve([])),
+    [team?.team_id],
+    0,
+  );
+
   const { data, loading, error } = useResource<{ items: Activity[]; total: number }>(
-    () => api(`/api/activity?limit=${PAGE_SIZE}&offset=0`),
-    [],
+    () => {
+      const query = new URLSearchParams({ limit: String(PAGE_SIZE), offset: "0" });
+      if (subteamId) query.set("subteam_id", subteamId);
+      return api(`/api/activity?${query.toString()}`);
+    },
+    [subteamId],
     15000,
   );
   const [visible, setVisible] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    setVisible(PAGE_SIZE);
+  }, [subteamId]);
+
+  const changeScope = (value: string) => {
+    const next = new URLSearchParams(params);
+    if (value) next.set("subteam_id", value);
+    else next.delete("subteam_id");
+    setParams(next);
+  };
 
   const items = useMemo(() => data?.items.slice(0, visible) ?? [], [data, visible]);
 
   return (
     <div>
-      <PageHeader title="Activity" subtitle="Audit-style timeline of everything happening in your team" />
+      <PageHeader
+        title="Activity"
+        subtitle="Audit-style timeline of everything happening in your team"
+        actions={
+          <Select
+            value={subteamId}
+            onChange={(e) => changeScope(e.target.value)}
+            className="w-full sm:w-48"
+            aria-label="Activity scope"
+          >
+            <option value="">Main team</option>
+            {(subteams ?? []).map((subteam) => (
+              <option key={subteam.subteam_id} value={subteam.subteam_id}>
+                {subteam.name}
+              </option>
+            ))}
+          </Select>
+        }
+      />
 
       {loading && !data ? (
         <SkeletonList rows={6} />

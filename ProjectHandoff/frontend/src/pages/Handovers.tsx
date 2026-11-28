@@ -5,7 +5,7 @@ import { api } from "../api/client";
 import type { Handover } from "../api/types";
 import { useResource } from "../hooks/useResource";
 import { useAuth } from "../state/AuthContext";
-import { Badge, Button, EmptyState, Input, PageHeader, SkeletonList, Tabs } from "../components/ui";
+import { Badge, Button, EmptyState, Input, PageHeader, Select, SkeletonList, Tabs } from "../components/ui";
 import { formatDate, timeAgo } from "../lib/format";
 
 const STATUS_FILTERS = ["All", "pending", "clarification_requested", "accepted", "rejected", "cancelled"] as const;
@@ -15,6 +15,7 @@ export function Handovers() {
   const [direction, setDirection] = useState<"incoming" | "outgoing" | "team">("incoming");
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]>("All");
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState("all");
 
   const endpoint = useMemo(() => {
     const params = new URLSearchParams({ direction });
@@ -25,8 +26,21 @@ export function Handovers() {
 
   const { data, loading, error, reload } = useResource<Handover[]>(() => api(endpoint), [endpoint], 15000);
 
+  const scopes = useMemo(() => {
+    const found = new Map<string, string>();
+    (data ?? []).forEach((h) => {
+      if (h.subteam_id) found.set(h.subteam_id, h.subteam_name || "Subteam");
+    });
+    return Array.from(found, ([id, name]) => ({ id, name }));
+  }, [data]);
+
   const filtered = useMemo(() => {
     let list = data ?? [];
+    if (scope === "main") {
+      list = list.filter((h) => !h.subteam_id);
+    } else if (scope !== "all") {
+      list = list.filter((h) => h.subteam_id === scope);
+    }
     if (query.trim()) {
       const needle = query.toLowerCase();
       list = list.filter(
@@ -37,7 +51,7 @@ export function Handovers() {
       );
     }
     return list;
-  }, [data, query]);
+  }, [data, query, scope]);
 
   return (
     <div>
@@ -70,6 +84,20 @@ export function Handovers() {
               {status.replace(/_/g, " ")}
             </button>
           ))}
+          <Select
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+            className="w-full sm:w-44"
+            aria-label="Filter by subteam"
+          >
+            <option value="all">All scopes</option>
+            <option value="main">Main team</option>
+            {scopes.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.name}
+              </option>
+            ))}
+          </Select>
           <Input
             placeholder="Search handovers…"
             value={query}
@@ -107,6 +135,7 @@ export function Handovers() {
                 <div className="flex min-w-0 items-center gap-2 text-sm">
                   <span className="truncate font-medium text-stone-900 dark:text-stone-100">{handover.task_title || "Task handover"}</span>
                   <Badge value={handover.status} className="shrink-0" />
+                  {handover.subteam_name && <Badge value={handover.subteam_name} className="shrink-0" />}
                 </div>
                 <span className="text-xs text-stone-400">sent {timeAgo(handover.created_at)}</span>
               </div>

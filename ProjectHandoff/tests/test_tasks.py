@@ -42,21 +42,35 @@ def test_task_update_flow_and_version(client, team):
     ).json()
     headers = auth_headers(member["token"])
 
-    response = client.patch(
+    direct = client.patch(
         f"/api/tasks/{task['task_id']}",
         json={"status": "In Progress"},
         headers=headers,
     )
-    assert response.status_code == 200
-    assert response.json()["version"] == "1"
-    assert response.json()["status"] == "In Progress"
+    assert direct.status_code == 403
 
-    response = client.patch(
-        f"/api/tasks/{task['task_id']}",
-        json={"status": "Blocked", "description": "Missing parts"},
+    requested = client.post(
+        f"/api/tasks/{task['task_id']}/status-requests",
+        json={"status": "In Progress"},
         headers=headers,
     )
-    assert response.json()["version"] == "2"
+    assert requested.status_code == 201, requested.text
+    approved = client.post(
+        f"/api/tasks/status-requests/{requested.json()['request_id']}/approve",
+        headers=team["headers"],
+    )
+    assert approved.status_code == 200, approved.text
+
+    result = client.get(f"/api/tasks/{task['task_id']}", headers=team["headers"]).json()["task"]
+    assert result["version"] == "1"
+    assert result["status"] == "In Progress"
+
+    detail_edit = client.patch(
+        f"/api/tasks/{task['task_id']}",
+        json={"description": "Missing parts"},
+        headers=headers,
+    )
+    assert detail_edit.status_code == 403
 
 
 def test_task_edit_permission(client, team):

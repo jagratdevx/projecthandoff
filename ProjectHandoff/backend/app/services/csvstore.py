@@ -29,6 +29,7 @@ SCHEMAS: dict[str, list[str]] = {
     "teams": [
         "team_id", "name", "description", "owner_id", "created_at", "status",
         "drive_folder_id", "drive_folder_url",
+        "resources_folder_id", "resources_folder_url",
     ],
     "credentials": ["user_id", "password_hash", "created_at"],
     "projects": [
@@ -59,6 +60,10 @@ SCHEMAS: dict[str, list[str]] = {
         "subteam_id",
     ],
     "comments": ["comment_id", "task_id", "user_id", "comment", "created_at"],
+    "task_status_requests": [
+        "request_id", "task_id", "team_id", "requested_by", "requested_status",
+        "note", "status", "reviewed_by", "created_at", "reviewed_at",
+    ],
     "activity": [
         "activity_id", "team_id", "project_id", "task_id", "user_id",
         "action", "description", "timestamp",
@@ -106,6 +111,7 @@ ID_COLUMNS: dict[str, str] = {
     "tasks": "task_id",
     "handovers": "handover_id",
     "comments": "comment_id",
+    "task_status_requests": "request_id",
     "activity": "activity_id",
     "activity_log": "activity_id",
     "team_memberships": "membership_id",

@@ -35,6 +35,11 @@ from app.services.activity import (
 from app.services.csvstore import now_iso, new_id
 from app.services.drive.base import DriveError, NotFoundError
 from app.services.drive.google_drive import GoogleDriveBackend
+from app.services.drive_share import (
+    resources_folder_for,
+    share_resources_with_member,
+    unshare_resources_from_member,
+)
 from app.services.drive_link import drive_folder_url, extract_drive_folder_id
 from app.services.memberships import (
     active_memberships,
@@ -59,7 +64,7 @@ INVITE_TTL_DAYS = 7
 TEAM_TABLES = (
     "projects", "events", "departments", "department_members", "subteams",
     "subteam_members", "subteam_activity",
-    "tasks", "handovers", "comments", "attachments",
+    "tasks", "handovers", "comments", "task_status_requests", "attachments",
 )
 
 
@@ -103,19 +108,9 @@ async def _resolve_drive_folder(link: str, backend, team_id: str = "") -> dict:
     return {"drive_folder_id": folder_id, "drive_folder_url": drive_folder_url(folder_id)}
 
 
-async def _share_with_member(backend, team_id: str, folder_id: str, email: str) -> bool:
-    """Best-effort folder permission grant via the team's account."""
-    if not email or not folder_id:
-        return False
-    try:
-        if isinstance(backend, GoogleDriveBackend):
-            await backend.team_share_folder(team_id, folder_id, email)
-        else:
-            await backend.share_folder(folder_id, email)
-        return True
-    except DriveError as exc:
-        logger.warning("Could not share the team Drive folder with %s: %s", email, exc)
-        return False
+async def _share_with_member(db: DbDep, team_id: str, email: str) -> bool:
+    """Share only the resources folder, never the team's app-data root."""
+    return await share_resources_with_member(db, team_id, email)
 
 
 def _folder_key_for(project_id: str, event_id: str) -> str:
@@ -350,7 +345,7 @@ async def link_team_drive_folder(team_id: str, payload: TeamDriveFolderIn, user:
     members = [u for u in await db.query("users") if u.get("team_id") == team_id and u.get("status") == "active"]
     granted = 0
     for member in members:
-        if await _share_with_member(backend, team_id, folder_id, member.get("email", "")):
+        if await _share_with_member(db, team_id, member.get("email", "")):
             granted += 1
     await log_activity(
         db, team_id=team_id, action=ACTION_DRIVE_FOLDER_CONNECTED,
@@ -518,12 +513,12 @@ async def complete_team(
     )
 
     drive_failures: list[str] = []
-    folder_id = team.get("drive_folder_id", "")
-    if folder_id and isinstance(db.backend, GoogleDriveBackend):
+    resource_id = await resources_folder_for(db, team_id)
+    if resource_id and isinstance(db.backend, GoogleDriveBackend):
         members = await memberships_for_user_self(db, team_id)
         for email in members:
             try:
-                await db.backend.team_share_folder(team_id, folder_id, email, role="reader")
+                await db.backend.team_share_folder(team_id, resource_id, email, role="reader")
             except DriveError as exc:
                 drive_failures.append(f"{email}: {exc}")
     if drive_failures and not payload.force:
@@ -665,13 +660,7 @@ async def remove_member(team_id: str, member_id: str, user: CurrentUser, db: DbD
     await db.assert_writable(team_id)
     team = next((t for t in await db.query("teams") if t.get("team_id") == team_id), None)
     if team and team.get("drive_folder_id"):
-        try:
-            if isinstance(db.backend, GoogleDriveBackend):
-                await db.backend.team_unshare_folder(team_id, team["drive_folder_id"], member["email"])
-            else:
-                await db.backend.unshare_folder(team["drive_folder_id"], member["email"])
-        except DriveError as exc:
-            logger.warning("Could not revoke Drive folder access for %s: %s", member["email"], exc)
+        await unshare_resources_from_member(db, team_id, member.get("email", ""))
     await log_activity(
         db, team_id=team_id, action=ACTION_MEMBER_LEFT,
         description=f"{user['name']} removed {member['name']} from the team", user_id=user["user_id"],
@@ -739,20 +728,24 @@ async def share_drive_folder(team_id: str, user: CurrentUser, db: DbDep) -> dict
     failed: list[str] = []
     shared = 0
     for member in members:
-        if await _share_with_member(db.backend, team_id, folder_id, member.get("email", "")):
+        if await _share_with_member(db, team_id, member.get("email", "")):
             shared += 1
         else:
             failed.append(member.get("email", ""))
     await log_activity(
         db, team_id=team_id, action=ACTION_DRIVE_FOLDER_CONNECTED,
-        description=f"{user['name']} shared the team Drive folder with all members ({shared}/{len(members)} granted)",
+        description=f"{user['name']} shared the team resources folder with all members ({shared}/{len(members)} granted)",
         user_id=user["user_id"],
     )
+    resource_id = await resources_folder_for(db, team_id)
     return {
         "shared": shared,
         "failed": failed,
         "members": len(members),
-        "folder_url": team.get("drive_folder_url") or drive_folder_url(folder_id),
+        "folder_url": (
+            drive_folder_url(resource_id)
+            if resource_id else team.get("drive_folder_url") or drive_folder_url(folder_id)
+        ),
     }
 
 

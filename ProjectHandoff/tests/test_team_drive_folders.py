@@ -33,6 +33,11 @@ def run(coro):
     return asyncio.run(coro)
 
 
+def resources_id(app, team_id: str) -> str:
+    row = next(t for t in run(app.state.db.query("teams")) if t.get("team_id") == team_id)
+    return row.get("resources_folder_id", "")
+
+
 # ---------------------------------------------------------------------------
 # Link parsing
 # ---------------------------------------------------------------------------
@@ -241,9 +246,15 @@ def test_link_folder_verifies_through_team_account_and_maps_paths(tmp_path, monk
         assert response.status_code == 200, response.text
         assert response.json()["drive_folder_id"] == FOLDER_ID
 
-        # the folder is shared with the owner through the TEAM's account
-        perms = service.state["permissions"].get(FOLDER_ID, [])
+        # only the Resources folder is shared with the owner; app-data root stays private
+        shared_id = resources_id(app, team_id)
+        assert shared_id and shared_id != FOLDER_ID
+        perms = service.state["permissions"].get(shared_id, [])
         assert any(p["emailAddress"] == "owner@test.dev" and p["role"] == "writer" for p in perms)
+        assert not any(
+            p["emailAddress"] == "owner@test.dev"
+            for p in service.state["permissions"].get(FOLDER_ID, [])
+        )
 
         # staged data was migrated into the team's folder (AppData/)
         projects_files = [
@@ -310,10 +321,15 @@ def test_members_never_need_google_and_get_folder_access(tmp_path, monkeypatch):
         )
         assert linked.status_code == 200, linked.text
 
-        # member joins -> automatically granted access via the team's account
+        # member joins -> granted access to Resources only
         member = invite_and_join(client, {"team_id": team_id, "headers": headers}, "mate@test.dev")
-        perms = service.state["permissions"].get(FOLDER_ID, [])
+        shared_id = resources_id(app, team_id)
+        perms = service.state["permissions"].get(shared_id, [])
         assert any(p["emailAddress"] == "mate@test.dev" for p in perms)
+        assert not any(
+            p["emailAddress"] == "mate@test.dev"
+            for p in service.state["permissions"].get(FOLDER_ID, [])
+        )
 
         # member removed -> access revoked
         members = client.get(f"/api/teams/{team_id}/members", headers=headers).json()
@@ -323,7 +339,7 @@ def test_members_never_need_google_and_get_folder_access(tmp_path, monkeypatch):
             headers=headers,
         )
         assert removed.status_code == 200
-        perms = service.state["permissions"].get(FOLDER_ID, [])
+        perms = service.state["permissions"].get(shared_id, [])
         assert not any(p["emailAddress"] == "mate@test.dev" for p in perms)
 
 
@@ -345,15 +361,17 @@ def test_drive_share_endpoint_grants_all_members(tmp_path, monkeypatch):
         invite_and_join(client, {"team_id": team_id, "headers": headers}, "mate1@test.dev")
         invite_and_join(client, {"team_id": team_id, "headers": headers}, "mate2@test.dev")
 
-        # pretend the earlier grants failed: clear permissions, then re-share
-        service.state["permissions"][FOLDER_ID] = []
+        # pretend the earlier grants failed: clear resource permissions, then re-share
+        shared_id = resources_id(app, team_id)
+        service.state["permissions"][shared_id] = []
         result = client.post(f"/api/teams/{team_id}/drive/share", headers=headers)
         assert result.status_code == 200, result.text
         body = result.json()
         assert body["shared"] == 3 and body["members"] == 3
-        perms = service.state["permissions"].get(FOLDER_ID, [])
+        perms = service.state["permissions"].get(shared_id, [])
         emails = {p["emailAddress"] for p in perms}
         assert emails == {"owner@test.dev", "mate1@test.dev", "mate2@test.dev"}
+        assert not service.state["permissions"].get(FOLDER_ID)
 
 
 def test_team_drive_status_reports_connection(tmp_path, monkeypatch):

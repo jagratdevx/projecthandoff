@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeftRight, FileDown, History, Send, Trash2, Upload } from "lucide-react";
 import { api, downloadAttachment } from "../api/client";
-import type { Activity, Attachment, Comment, Handover, Project, Subteam, Task, TaskStatus, User } from "../api/types";
+import type { Activity, Attachment, Comment, Handover, Project, Subteam, Task, TaskStatus, TaskStatusRequest, User } from "../api/types";
 import { useResource } from "../hooks/useResource";
 import { useMembers } from "../hooks/useMembers";
 import { useAuth } from "../state/AuthContext";
@@ -68,6 +68,11 @@ export function TaskDetail() {
   const toast = useToast();
 
   const { data, loading, error, reload } = useResource<TaskDetailData>(() => api(`/api/tasks/${id}`), [id], 15000);
+  const { data: statusRequests, reload: reloadStatusRequests } = useResource<TaskStatusRequest[]>(
+    () => (id ? api(`/api/tasks/${id}/status-requests`) : Promise.resolve([])),
+    [id],
+    15000,
+  );
   const { data: projects } = useResource<Project[]>(() => api("/api/projects"), [], 60000);
   const { data: subteams } = useResource<Subteam[]>(
     () => (team ? api(`/api/teams/${team.team_id}/subteams`) : Promise.resolve([])),
@@ -91,6 +96,9 @@ export function TaskDetail() {
   if (error || !data) return <p className="text-sm text-red-600 dark:text-red-400">{error ?? "Task not found"}</p>;
 
   const { task, comments, attachments, handovers, activity, names } = data;
+  const fullAccess = ["owner", "admin", "council", "teacher"].includes(user?.role ?? "");
+  const mySubteamRole = user?.subteams?.find((s) => s.subteam_id === task.subteam_id)?.role;
+  const canManageTask = fullAccess || mySubteamRole === "coordinator";
   const projectName = projects?.find((p) => p.project_id === task.project_id)?.name;
   const canDelete = user && (user.role === "owner" || user.role === "admin" || task.created_by === user.user_id);
 
@@ -103,6 +111,31 @@ export function TaskDetail() {
       void reload();
     } catch (err) {
       toast.push("error", err instanceof Error ? err.message : "Update failed");
+    }
+  };
+
+  const requestStatus = async (value: TaskStatus) => {
+    try {
+      await api(`/api/tasks/${task.task_id}/status-requests`, {
+        method: "POST",
+        body: { status: value },
+      });
+      toast.push("success", `Status change to ${value} sent for coordinator approval`);
+      setStatusValue(null);
+      void reloadStatusRequests();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Could not request status change");
+    }
+  };
+
+  const reviewStatusRequest = async (requestId: string, action: "approve" | "reject") => {
+    try {
+      await api(`/api/tasks/status-requests/${requestId}/${action}`, { method: "POST" });
+      toast.push("success", action === "approve" ? "Status change approved" : "Status change rejected");
+      void reload();
+      void reloadStatusRequests();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "Could not review status change");
     }
   };
 
@@ -232,7 +265,8 @@ export function TaskDetail() {
                   onChange={(e) => {
                     const value = e.target.value as TaskStatus;
                     setStatusValue(value);
-                    void patchTask({ status: value }, `Status set to ${value}`);
+                    if (canManageTask) void patchTask({ status: value }, `Status set to ${value}`);
+                    else void requestStatus(value);
                   }}
                 >
                   {["Not Started", "In Progress", "Blocked", "Under Review", "Completed"].map((s) => (
@@ -243,6 +277,7 @@ export function TaskDetail() {
               <Field label="Priority">
                 <Select
                   defaultValue={task.priority}
+                  disabled={!canManageTask}
                   onChange={(e) => void patchTask({ priority: e.target.value }, "Priority updated")}
                 >
                   {["Low", "Medium", "High", "Critical"].map((p) => (
@@ -253,6 +288,7 @@ export function TaskDetail() {
               <Field label="Assignee">
                 <Select
                   defaultValue={task.assigned_to}
+                  disabled={!canManageTask}
                   onChange={(e) => void patchTask({ assigned_to: e.target.value || undefined }, "Assignee updated")}
                 >
                   <option value="">Unassigned</option>
@@ -267,6 +303,7 @@ export function TaskDetail() {
                 <Input
                   type="date"
                   defaultValue={task.deadline}
+                  disabled={!canManageTask}
                   onChange={(e) => void patchTask({ deadline: e.target.value }, "Deadline updated")}
                 />
               </Field>
@@ -275,8 +312,9 @@ export function TaskDetail() {
               <Field label="Description">
                 {descriptionDraft === null ? (
                   <button
+                    disabled={!canManageTask}
                     onClick={() => setDescriptionDraft(task.description)}
-                    className="w-full rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-left text-sm text-stone-600 transition hover:border-brand-400 dark:border-stone-700 dark:text-stone-300"
+                    className="w-full rounded-lg border border-dashed border-stone-300 px-3 py-2.5 text-left text-sm text-stone-600 transition hover:border-brand-400 disabled:cursor-not-allowed disabled:opacity-60 dark:border-stone-700 dark:text-stone-300"
                   >
                     {task.description || "Click to add a description…"}
                   </button>
@@ -308,6 +346,34 @@ export function TaskDetail() {
               </p>
             </div>
           </Card>
+
+          {!!statusRequests?.length && (
+            <Card>
+              <CardHeader title={`Status change requests (${statusRequests.filter((r) => r.status === "pending").length})`} />
+              <div className="divide-y divide-stone-100 dark:divide-stone-800">
+                {statusRequests.map((request) => (
+                  <div key={request.request_id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm text-stone-800 dark:text-stone-200">
+                        {request.requested_by_name || "A member"} → <Badge value={request.requested_status} />
+                      </p>
+                      <p className="text-xs text-stone-500">
+                        {request.note || "No note"} · {timeAgo(request.created_at)} · {request.status}
+                      </p>
+                    </div>
+                    {canManageTask && request.status === "pending" && (
+                      <div className="flex gap-2">
+                        <Button onClick={() => void reviewStatusRequest(request.request_id, "approve")}>Approve</Button>
+                        <Button variant="secondary" onClick={() => void reviewStatusRequest(request.request_id, "reject")}>
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Handovers */}
           <Card>

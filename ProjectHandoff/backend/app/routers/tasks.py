@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.deps import CurrentUser, DbDep, require_roles, require_team
-from app.schemas.api import CommentIn, TaskCreateIn, TaskUpdateIn
+from app.schemas.api import CommentIn, StatusRequestIn, TaskCreateIn, TaskUpdateIn
 from app.services.activity import (
     ACTION_COMMENT_ADDED,
     ACTION_TASK_ASSIGNED,
@@ -48,8 +48,6 @@ def _can_edit_task(user: dict, task: dict, coordinators: set[str], subteam_id: s
     if has_full_access(user):
         return True
     if subteam_id and subteam_id in coordinators:
-        return True
-    if task.get("assigned_to") == user["user_id"] or task.get("created_by") == user["user_id"]:
         return True
     dept = task.get("department_id", "")
     return bool(dept) and dept in coordinators
@@ -150,8 +148,8 @@ async def create_task(payload: TaskCreateIn, user: CurrentUser, db: DbDep) -> di
         await _validate_subteam(db, team_id, effective)
         if not await can_manage_subteam(db, user, team_id, effective):
             raise HTTPException(status_code=403, detail="Only this subteam's coordinator or an overseer can create tasks for it")
-    elif not has_full_access(user) and await db.query("subteams", team_id):
-        raise HTTPException(status_code=403, detail="Choose a subteam for this task")
+    elif not has_full_access(user):
+        raise HTTPException(status_code=403, detail="Only subteam coordinators and overseers can add tasks")
     if payload.subteam_id and project_subteam and payload.subteam_id != project_subteam:
         raise HTTPException(status_code=400, detail="Task subteam must match the project's subteam")
 
@@ -202,6 +200,140 @@ async def _validate_subteam(db: DbDep, team_id: str, subteam_id: str) -> None:
         raise HTTPException(status_code=400, detail="That subteam does not belong to your team")
 
 
+def _name_of(users: list[dict], user_id: str) -> str:
+    return next((u.get("name", "") for u in users if u.get("user_id") == user_id), "a member")
+
+
+@router.post("/{task_id}/status-requests", status_code=201)
+async def request_task_status(
+    task_id: str, payload: StatusRequestIn, user: CurrentUser, db: DbDep
+) -> dict:
+    team_id = require_team(user)
+    task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
+    if payload.status == task.get("status", ""):
+        raise HTTPException(status_code=400, detail="The task is already in that status")
+    existing = [r for r in await db.query("task_status_requests", team_id) if r.get("task_id") == task_id]
+    if any(r.get("status") == "pending" and r.get("requested_by") == user["user_id"] for r in existing):
+        raise HTTPException(status_code=409, detail="You already have a pending status request for this task")
+    request = {
+        "request_id": new_id(),
+        "task_id": task_id,
+        "team_id": team_id,
+        "requested_by": user["user_id"],
+        "requested_status": payload.status,
+        "note": payload.note.strip(),
+        "status": "pending",
+        "reviewed_by": "",
+        "created_at": now_iso(),
+        "reviewed_at": "",
+    }
+    await db.insert("task_status_requests", request, team_id)
+    await log_activity(
+        db, team_id=team_id, project_id=task.get("project_id", ""), task_id=task_id,
+        action=ACTION_TASK_UPDATED,
+        description=f"{user['name']} requested status “{payload.status}” for “{task['title']}”",
+        user_id=user["user_id"],
+    )
+    return request
+
+
+@router.get("/{task_id}/status-requests")
+async def list_task_status_requests(task_id: str, user: CurrentUser, db: DbDep) -> list[dict]:
+    team_id = require_team(user)
+    task = await _get_task(db, user, task_id)
+    await _require_task_visible(db, user, team_id, task)
+    users = await db.query("users")
+    requests = [r for r in await db.query("task_status_requests", team_id) if r.get("task_id") == task_id]
+    for request in requests:
+        request["requested_by_name"] = _name_of(users, request.get("requested_by", ""))
+        request["reviewed_by_name"] = _name_of(users, request.get("reviewed_by", ""))
+    return sorted(requests, key=lambda r: r.get("created_at", ""), reverse=True)
+
+
+async def _reviewer_can_change(db: DbDep, user: dict, team_id: str, task: dict) -> bool:
+    if has_full_access(user):
+        return True
+    subteam_id = await _effective_subteam(db, team_id, task)
+    if subteam_id and subteam_id in await coordinator_of(db, team_id, user["user_id"]):
+        return True
+    dept = task.get("department_id", "")
+    if dept:
+        departments = await db.query("departments", team_id)
+        return any(
+            row.get("department_id") == dept and row.get("coordinator_id") == user["user_id"]
+            for row in departments
+        )
+    return False
+
+
+@router.post("/status-requests/{request_id}/approve")
+async def approve_task_status(request_id: str, user: CurrentUser, db: DbDep) -> dict:
+    team_id = require_team(user)
+    request = next(
+        (r for r in await db.query("task_status_requests", team_id) if r.get("request_id") == request_id),
+        None,
+    )
+    if request is None or request.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="Pending status request not found")
+    task = await _get_task(db, user, request.get("task_id", ""))
+    await _require_task_visible(db, user, team_id, task)
+    if not await _reviewer_can_change(db, user, team_id, task):
+        raise HTTPException(status_code=403, detail="Only a coordinator or overseer can approve status changes")
+
+    def apply(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("task_id") == task["task_id"]:
+                row["status"] = request["requested_status"]
+                row["version"] = str(int(row.get("version", "0") or "0") + 1)
+                row["updated_at"] = now_iso()
+        return rows
+
+    def review(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("request_id") == request_id:
+                row["status"] = "approved"
+                row["reviewed_by"] = user["user_id"]
+                row["reviewed_at"] = now_iso()
+        return rows
+
+    await db.mutate("tasks", apply, team_id)
+    await db.mutate("task_status_requests", review, team_id)
+    await log_activity(
+        db, team_id=team_id, project_id=task.get("project_id", ""), task_id=task["task_id"],
+        action=ACTION_TASK_STATUS,
+        description=f"{user['name']} approved status “{request['requested_status']}” for “{task['title']}”",
+        user_id=user["user_id"],
+    )
+    return {"ok": True, "status": request["requested_status"]}
+
+
+@router.post("/status-requests/{request_id}/reject")
+async def reject_task_status(request_id: str, user: CurrentUser, db: DbDep) -> dict:
+    team_id = require_team(user)
+    request = next(
+        (r for r in await db.query("task_status_requests", team_id) if r.get("request_id") == request_id),
+        None,
+    )
+    if request is None or request.get("status") != "pending":
+        raise HTTPException(status_code=404, detail="Pending status request not found")
+    task = await _get_task(db, user, request.get("task_id", ""))
+    await _require_task_visible(db, user, team_id, task)
+    if not await _reviewer_can_change(db, user, team_id, task):
+        raise HTTPException(status_code=403, detail="Only a coordinator or overseer can review status changes")
+
+    def review(rows: list[dict]) -> list[dict]:
+        for row in rows:
+            if row.get("request_id") == request_id:
+                row["status"] = "rejected"
+                row["reviewed_by"] = user["user_id"]
+                row["reviewed_at"] = now_iso()
+        return rows
+
+    await db.mutate("task_status_requests", review, team_id)
+    return {"ok": True}
+
+
 @router.get("/{task_id}")
 async def get_task(task_id: str, user: CurrentUser, db: DbDep) -> dict:
     team_id = require_team(user)
@@ -245,7 +377,7 @@ async def update_task(task_id: str, payload: TaskUpdateIn, user: CurrentUser, db
     if not _can_edit_task(user, task, coordinators, subteam_id):
         raise HTTPException(
             status_code=403,
-            detail="Only the assignee, task creator, subteam coordinator or team overseers can edit this task",
+            detail="Only the subteam coordinator, department coordinator or overseers can edit this task",
         )
     if payload.assigned_to and payload.assigned_to != task.get("assigned_to", ""):
         if not (has_full_access(user) or (subteam_id and subteam_id in sub_coordinators)):

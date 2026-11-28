@@ -12,6 +12,7 @@ from app.security import create_token, hash_password, hash_token, verify_passwor
 from app.services.activity import ACTION_MEMBER_JOINED
 from app.services.csvstore import now_iso, new_id
 from app.services.drive.base import DriveError
+from app.services.drive_share import share_resources_with_member
 from app.services.memberships import (
     active_memberships as active_team_memberships,
     add_team_membership as add_membership_record,
@@ -115,20 +116,9 @@ async def register(payload: RegisterIn, db: DbDep, settings: SettingsDep) -> dic
         await _log_join(db, team_id, user)
         from app.services.drive.google_drive import GoogleDriveBackend
 
-        folder_id = team.get("drive_folder_id", "") if team else ""
-        if folder_id:
-            # The team's Drive folder is open to every member: grant this
-            # account writer access as soon as they join (best effort, via
-            # the team's own connected Google account).
-            try:
-                if isinstance(db.backend, GoogleDriveBackend):
-                    await db.backend.team_share_folder(team_id, folder_id, email)
-                else:
-                    await db.backend.share_folder(folder_id, email)
-            except DriveError as exc:
-                logger.warning(
-                    "Could not share the team Drive folder with %s: %s", email, exc
-                )
+        if team and team.get("drive_folder_id"):
+            # Members can see shared resources, never the app-data root.
+            await share_resources_with_member(db, team_id, email)
     invalidate_user_cache(user_id)
 
     return {"token": _make_token(settings, user), "user": user}
@@ -216,6 +206,9 @@ async def accept_invitation(payload: InviteAcceptIn, user: CurrentUser, db: DbDe
     )
     if joining_new_team:
         await set_current_membership(db, user["user_id"], team_id)
+    team_row = next((t for t in await db.query("teams") if t.get("team_id") == team_id), None)
+    if team_row and team_row.get("drive_folder_id"):
+        await share_resources_with_member(db, team_id, email)
     if subteam_id:
         await add_membership(db, team_id, subteam_id, user["user_id"], subteam_role, "")
     await _log_join(db, team_id, user)

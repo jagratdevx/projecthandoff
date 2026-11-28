@@ -36,6 +36,7 @@ from app.services.csvstore import (
 )
 from app.services.drive.base import DriveAuthError, DriveError, DriveTransientError
 from app.services.drive.factory import create_drive_backend
+from app.services.drive_share import sync_resource_sharing
 
 logger = logging.getLogger("projecthandoff")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -62,6 +63,8 @@ def create_app(settings: Settings | None = None, backend=None, persistent_cache_
             await app.state.db.init()
             await app.state.db.backfill_membership_data()
             await app.state.db.backfill_project_scope_data()
+            if app.state.backend.mode == "drive":
+                await sync_resource_sharing(app.state.db)
             logger.info("Storage initialized (mode=%s)", app.state.backend.mode)
             if app.state.backend.mode == "local":
                 logger.warning(

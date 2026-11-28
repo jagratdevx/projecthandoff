@@ -34,7 +34,7 @@ Most apps put your data in someone else's database and give you an export button
 - **Council & teachers** — `council` and `teacher` roles have full read/write access alongside owners and admins; teachers can promote others. Subteam coordinators can approve scoped handovers.
 - **Event completion & memories** — an owner or teacher can mark a main team complete. Its logs and Drive files stay readable as memories, but the whole team becomes read-only. Members can then create a new main team.
 - **Account reset** — Settings has a guarded reset that detaches an account from teams if it gets into a bad state, without deleting its history or files.
-- **Bring-your-own Drive, per team** — at team creation the creator pastes their *own* Google OAuth client and connects their *own* Google account once; the team's folder link pins all the team's files and data tables inside their Drive, and every member gets writer access automatically (revoked when they're removed). Members never see Google anything — they just log in. Multi-tenant ready: every team owns its credentials, its folder and its data.
+- **Bring-your-own Drive, per team** — at team creation the creator pastes their *own* Google OAuth client and connects their *own* Google account once; the team's folder link pins all the team's files and data tables inside their Drive. Members get writer access only to the team's `Resources/` folder, never to `AppData/`, `Backups/`, or the CSV files (revoked when they're removed). Members never see Google anything — they just log in. Multi-tenant ready: every team owns its credentials, its folder and its data.
 - **Projects** — list/create/archive projects with owners, priorities and progress.
 - **Tasks** — full task lifecycle (Not Started → In Progress → Blocked → Under Review → Completed), assignees, deadlines, priorities, version-stamped updates, comments, attachments.
 - **Structured handovers** — the core feature. A task owner hands a task to a teammate by filling a structured handover record: *completed work, remaining work, current state, blockers, next actions, relevant files, notes*. The proposed owner can **accept**, **reject** (with reason), or **request clarification**; the previous owner can **respond** or **cancel**. Every step is logged on the task as comments and in the team activity feed. Acceptance reassigns the task and bumps its version.
@@ -318,14 +318,16 @@ All persistent data is CSV text (RFC-4180, UTF-8, header row, ISO-8601 timestamp
 <root>/Backups/global/{table}/…          # rotating backups after every write
 ```
 
-**Each team that linked a Drive folder at setup owns everything else inside that folder**, shared with all members:
+**Each team that linked a Drive folder at setup owns everything else inside that folder**. Only the `Resources/` folder is shared with members:
 
 ```
-<team folder>/AppData/                   # per-team CSV tables (the app's data)
+<team folder>/AppData/                   # private app CSV tables (the app's data)
 │   projects.csv  events.csv  departments.csv  department_members.csv
 │   subteams.csv  subteam_members.csv  subteam_activity.csv
 │   activity_log.csv  tasks.csv  handovers.csv  comments.csv  attachments.csv
-<team folder>/Files/…                    # team-level uploads
+│   task_status_requests.csv
+<team folder>/Resources/…                # the only folder members can open in Drive
+<team folder>/Files/…                    # team-level uploads (backend-managed)
 <team folder>/Projects/{project_id}/files/…
 <team folder>/Events/{event_id}/files/…
 <team folder>/Subteams/{name}/…          # human-readable subteam folders
@@ -342,7 +344,7 @@ Teams without a linked folder keep their data under `<root>/TeamData/{team_id}/�
 - Passwords: PBKDF2-HMAC-SHA256, 200 000 iterations, per-password salt, constant-time comparison.
 - Tokens: stateless HMAC-signed claims (user, team, role, exp); 401 responses clear the client token and redirect to login.
 - Invitations: stored as SHA-256 hashes; single-use; expire after 7 days; the invitee's email must match the invited address.
-- Drive scope: each team authorizes with full `https://www.googleapis.com/auth/drive` scope from its own Google account — required so the backend can read/verify the team's folder (which the creator made manually) and manage sharing permissions on the team's behalf. Team folders are shared per-member (writer) when they join and unshared when they're removed. Team tokens and OAuth clients are stored server-side under `.tokens/teams/{team_id}/` (gitignored) and never logged or exported.
+- Drive scope: each team authorizes with full `https://www.googleapis.com/auth/drive` scope from its own Google account — required so the backend can read/verify the team's folder (which the creator made manually) and manage sharing permissions on the team's behalf. Only each team's `Resources/` folder is shared per-member (writer) when they join and unshared when they're removed. The team root, `AppData/`, `Backups/`, and all CSV tables remain accessible only to the backend/team owner. Team tokens and OAuth clients are stored server-side under `.tokens/teams/{team_id}/` (gitignored) and never logged or exported.
 - OAuth state: signed and verified on the callback; the post-login redirect path is validated to be a local path only.
 - Uploads: extension allow-list, size cap, filename sanitization, non-guessable storage keys.
 - Secrets (`.env`, OAuth tokens, client secrets) are gitignored and never logged.

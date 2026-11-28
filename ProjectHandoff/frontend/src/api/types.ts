@@ -125,6 +125,20 @@ export interface Task {
   task_title?: string;
 }
 
+export interface TaskStatusRequest {
+  request_id: string;
+  task_id: string;
+  requested_by: string;
+  requested_status: TaskStatus;
+  note: string;
+  status: "pending" | "approved" | "rejected";
+  reviewed_by?: string;
+  created_at: string;
+  reviewed_at?: string;
+  requested_by_name?: string;
+  reviewed_by_name?: string;
+}
+
 export interface Comment {
   comment_id: string;
   task_id: string;

@@ -253,3 +253,24 @@ def test_accept_after_owner_changed_elsewhere(client, team):
     assert accept.status_code == 200
     tasks = client.get("/api/tasks", headers=team["headers"]).json()
     assert next(t for t in tasks if t["task_id"] == task["task_id"])["assigned_to"] == new_owner["user"]["user_id"]
+
+
+def test_accept_comment_uses_names_not_ids(client, team):
+    new_owner = invite_and_join(client, team, "named@test.dev")
+    _project, task = setup_task(client, team)
+    handover = client.post(
+        "/api/handovers",
+        json={"task_id": task["task_id"], "proposed_owner_id": new_owner["user"]["user_id"], "completed_work": "x"},
+        headers=team["headers"],
+    ).json()
+    accepted = client.post(
+        f"/api/handovers/{handover['handover_id']}/accept",
+        headers=auth_headers(new_owner["token"]),
+    )
+    assert accepted.status_code == 200
+    comments = client.get(f"/api/tasks/{task['task_id']}/comments", headers=team["headers"]).json()
+    comment = next(c for c in comments if "Accepted the handover" in c["comment"])
+    assert team["owner"]["user"]["name"] in comment["comment"]
+    assert new_owner["user"]["name"] in comment["comment"]
+    assert new_owner["user"]["user_id"] not in comment["comment"]
+    assert team["owner"]["user"]["user_id"] not in comment["comment"]

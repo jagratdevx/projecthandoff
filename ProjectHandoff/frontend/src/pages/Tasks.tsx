@@ -46,6 +46,9 @@ const EMPTY_TASK: TaskForm = {
 
 export function Tasks() {
   const { user } = useAuth();
+  const canAddTask =
+    ["owner", "admin", "council", "teacher"].includes(user?.role ?? "") ||
+    !!user?.subteams?.some((s) => s.role === "coordinator");
   const members = useMembers();
   const toast = useToast();
   const [statusFilter, setStatusFilter] = useState<(typeof TASK_STATUSES)[number]>("All");
@@ -107,9 +110,11 @@ export function Tasks() {
         title="Tasks"
         subtitle="Everything assigned across the team"
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" aria-hidden /> New task
-          </Button>
+          canAddTask && (
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" aria-hidden /> New task
+            </Button>
+          )
         }
       />
 
@@ -179,9 +184,11 @@ export function Tasks() {
           title="No tasks found"
           description="Try different filters, or create a task to get work moving."
           action={
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" aria-hidden /> New task
-            </Button>
+            canAddTask ? (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" aria-hidden /> New task
+              </Button>
+            ) : undefined
           }
         />
       ) : (

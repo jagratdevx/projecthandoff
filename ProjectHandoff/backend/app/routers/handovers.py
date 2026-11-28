@@ -53,6 +53,13 @@ async def _add_task_comment(db: DbDep, team_id: str, task: dict, user_id: str, t
     )
 
 
+async def _user_name(db: DbDep, user_id: str) -> str:
+    if not user_id:
+        return "Unknown member"
+    row = next((u for u in await db.query("users") if u.get("user_id") == user_id), None)
+    return row.get("name", "Unknown member") if row else "Unknown member"
+
+
 async def _can_approve(db: DbDep, user: CurrentUser, handover: dict, team_id: str) -> bool:
     if handover.get("proposed_owner_id") == user["user_id"] or has_full_access(user):
         return True
@@ -280,9 +287,10 @@ async def accept_handover(handover_id: str, user: CurrentUser, db: DbDep) -> dic
 
     await db.mutate("handovers", update_handover, team_id)
     await db.mutate("tasks", update_task, team_id)
+    previous_name = await _user_name(db, handover.get("previous_owner_id", ""))
     await _add_task_comment(
         db, team_id, task, user["user_id"],
-        f"Accepted the handover from {handover['previous_owner_id']} to {proposed_id}.",
+        f"Accepted the handover from {previous_name} to {proposed_name}.",
     )
     subteam_id = handover.get("subteam_id", "")
     subteam = await get_subteam(db, team_id, subteam_id) if subteam_id else None

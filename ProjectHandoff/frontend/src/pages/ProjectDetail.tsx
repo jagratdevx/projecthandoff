@@ -272,9 +272,11 @@ export function ProjectDetail() {
             <CardHeader
               title="Project tasks"
               action={
-                <Button variant="secondary" onClick={() => setTaskOpen(true)}>
-                  <Plus className="h-4 w-4" aria-hidden /> Add task
-                </Button>
+                canManage && (
+                  <Button variant="secondary" onClick={() => setTaskOpen(true)}>
+                    <Plus className="h-4 w-4" aria-hidden /> Add task
+                  </Button>
+                )
               }
             />
             <div className="divide-y divide-stone-100 dark:divide-stone-800">

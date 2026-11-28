@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./state/AuthContext";
 import { Layout } from "./components/Layout";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { Spinner } from "./components/ui";
 import { Dashboard } from "./pages/Dashboard";
 import { Projects } from "./pages/Projects";
@@ -85,7 +86,7 @@ export default function App() {
           <Route path="/events/:id" element={<EventDetail />} />
           <Route path="/team" element={<TeamPage />} />
           <Route path="/team/subteams/:subteamId/projects" element={<SubteamProjects />} />
-          <Route path="/memories" element={<Memories />} />
+          <Route path="/memories" element={<RouteErrorBoundary label="Memories"><Memories /></RouteErrorBoundary>} />
           <Route path="/activity" element={<ActivityPage />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
